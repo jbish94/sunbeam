@@ -16,7 +16,7 @@ class LocationSettingsScreen extends StatefulWidget {
   final String currentTimezone;
   final String currentGpsAccuracy;
   final Function(String location, String timezone, String gpsAccuracy)
-  onLocationChanged;
+      onLocationChanged;
 
   const LocationSettingsScreen({
     Key? key,
@@ -99,19 +99,13 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
                                   'Location',
                                   style: AppTheme.lightTheme.textTheme.bodySmall
                                       ?.copyWith(
-                                        color:
-                                            AppTheme
-                                                .lightTheme
-                                                .colorScheme
-                                                .onSurfaceVariant,
-                                      ),
+                                    color: AppTheme.lightTheme.colorScheme
+                                        .onSurfaceVariant,
+                                  ),
                                 ),
                                 Text(
                                   _currentLocation,
-                                  style: AppTheme
-                                      .lightTheme
-                                      .textTheme
-                                      .bodyMedium
+                                  style: AppTheme.lightTheme.textTheme.bodyMedium
                                       ?.copyWith(fontWeight: FontWeight.w500),
                                 ),
                               ],
@@ -158,19 +152,13 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
                                   'Timezone',
                                   style: AppTheme.lightTheme.textTheme.bodySmall
                                       ?.copyWith(
-                                        color:
-                                            AppTheme
-                                                .lightTheme
-                                                .colorScheme
-                                                .onSurfaceVariant,
-                                      ),
+                                    color: AppTheme.lightTheme.colorScheme
+                                        .onSurfaceVariant,
+                                  ),
                                 ),
                                 Text(
                                   _currentTimezone,
-                                  style: AppTheme
-                                      .lightTheme
-                                      .textTheme
-                                      .bodyMedium
+                                  style: AppTheme.lightTheme.textTheme.bodyMedium
                                       ?.copyWith(fontWeight: FontWeight.w500),
                                 ),
                               ],
@@ -193,10 +181,9 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
                 ToggleItemWidget(
                   iconName: 'gps_fixed',
                   title: 'High Precision GPS',
-                  subtitle:
-                      _highPrecisionGPS
-                          ? 'Using high precision mode for better accuracy'
-                          : 'Using balanced mode to save battery',
+                  subtitle: _highPrecisionGPS
+                      ? 'Using high precision mode for better accuracy'
+                      : 'Using balanced mode to save battery',
                   value: _highPrecisionGPS,
                   onChanged: _toggleGPSAccuracy,
                 ),
@@ -226,23 +213,18 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
                             'Active',
                             style: AppTheme.lightTheme.textTheme.bodySmall
                                 ?.copyWith(
-                                  color: AppTheme.getSuccessColor(true),
-                                  fontWeight: FontWeight.w500,
-                                ),
+                              color: AppTheme.getSuccessColor(true),
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
                         ],
                       ),
                       SizedBox(height: 0.5.h),
                       Text(
                         'Current accuracy: ${_gpsAccuracy.toLowerCase()} precision',
-                        style: AppTheme.lightTheme.textTheme.bodySmall
-                            ?.copyWith(
-                              color:
-                                  AppTheme
-                                      .lightTheme
-                                      .colorScheme
-                                      .onSurfaceVariant,
-                            ),
+                        style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+                          color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+                        ),
                       ),
                     ],
                   ),
@@ -257,7 +239,8 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
               margin: EdgeInsets.all(4.w),
               padding: EdgeInsets.all(4.w),
               decoration: BoxDecoration(
-                color: AppTheme.lightTheme.colorScheme.surfaceContainerHighest
+                color: AppTheme
+                    .lightTheme.colorScheme.surfaceContainerHighest
                     .withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -286,7 +269,8 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
                     '• Location data is used for weather forecasts and UV index calculations\n'
                     '• Your location data is stored securely and never shared',
                     style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
-                      color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+                      color:
+                          AppTheme.lightTheme.colorScheme.onSurfaceVariant,
                       height: 1.4,
                     ),
                   ),
@@ -335,7 +319,7 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
         return;
       }
 
-      // Get current location
+      // Get current location (now returns a Map with doubles)
       final position = await locationService.getCurrentLocation();
       if (position == null) {
         _showToast('Unable to get current location. Please try again.');
@@ -345,31 +329,28 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
         return;
       }
 
+      final lat = (position['latitude'] as num).toDouble();
+      final lng = (position['longitude'] as num).toDouble();
+
       // Get address from coordinates
-      final address = await locationService.getAddressFromCoordinates(
-        position.latitude,
-        position.longitude,
-      );
+      final address = await locationService.getAddressFromCoordinates(lat, lng);
 
       if (address != null) {
         // Get timezone for the location
-        final timezone = await locationService.getTimezone(
-          position.latitude,
-          position.longitude,
-        );
+        final timezone = await locationService.getTimezone(lat, lng);
 
         // Update location data
-        String displayLocation = address;
-        String displayTimezone = _formatTimezone(timezone ?? 'UTC');
+        final displayLocation = address;
+        final displayTimezone = _formatTimezone(timezone ?? 'UTC');
 
         // Save to SharedPreferences
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('user_location', displayLocation);
         await prefs.setString('user_timezone', displayTimezone);
-        await prefs.setDouble('user_latitude', position.latitude);
-        await prefs.setDouble('user_longitude', position.longitude);
+        await prefs.setDouble('user_latitude', lat);
+        await prefs.setDouble('user_longitude', lng);
 
-        // Save to Supabase if available
+        // Save to Supabase if available (accepts the same map-shaped position)
         await locationService.saveLocationToSupabase(
           position,
           address: address,
@@ -380,7 +361,7 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
           _currentTimezone = displayTimezone;
         });
 
-        // Call the callback to update parent
+        // Notify parent
         widget.onLocationChanged(
           _currentLocation,
           _currentTimezone,
@@ -421,8 +402,7 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
   }
 
   String _formatTimezone(String timezone) {
-    // Convert timezone identifier to human-readable format
-    Map<String, String> timezoneMapping = {
+    final timezoneMapping = <String, String>{
       'America/Phoenix': 'MST (GMT-7)',
       'America/Denver': 'MST (GMT-7)',
       'America/Los_Angeles': 'PST (GMT-8)',
