@@ -73,8 +73,6 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
         child: Column(
           children: [
             SizedBox(height: 2.h),
-
-            // Location Information Section
             SettingsSectionWidget(
               title: 'Current Location',
               children: [
@@ -111,18 +109,13 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
                               ],
                             ),
                           ),
-                          if (_isLoading) ...[
-                            SizedBox(
+                          if (_isLoading)
+                            const SizedBox(
                               width: 20,
                               height: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(
-                                  AppTheme.lightTheme.primaryColor,
-                                ),
-                              ),
-                            ),
-                          ] else ...[
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          else
                             IconButton(
                               onPressed: _refreshLocation,
                               icon: CustomIconWidget(
@@ -132,7 +125,6 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
                               ),
                               tooltip: 'Refresh Location',
                             ),
-                          ],
                         ],
                       ),
                       SizedBox(height: 2.h),
@@ -171,10 +163,7 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
                 ),
               ],
             ),
-
             SizedBox(height: 2.h),
-
-            // GPS Accuracy Settings
             SettingsSectionWidget(
               title: 'GPS Accuracy',
               children: [
@@ -231,16 +220,12 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
                 ),
               ],
             ),
-
             SizedBox(height: 2.h),
-
-            // Information Section
             Container(
               margin: EdgeInsets.all(4.w),
               padding: EdgeInsets.all(4.w),
               decoration: BoxDecoration(
-                color: AppTheme
-                    .lightTheme.colorScheme.surfaceContainerHighest
+                color: AppTheme.lightTheme.colorScheme.surfaceContainerHighest
                     .withValues(alpha: 0.3),
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -269,15 +254,13 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
                     '• Location data is used for weather forecasts and UV index calculations\n'
                     '• Your location data is stored securely and never shared',
                     style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
-                      color:
-                          AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+                      color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
                       height: 1.4,
                     ),
                   ),
                 ],
               ),
             ),
-
             SizedBox(height: 4.h),
           ],
         ),
@@ -295,78 +278,53 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
     try {
       final locationService = LocationService.instance;
 
-      // Check if location service is enabled
       if (!await locationService.isLocationServiceEnabled()) {
-        _showToast(
-          'Location service is disabled. Please enable it in settings.',
-        );
+        _showToast('Location service is disabled. Please enable it in settings.');
         await locationService.openLocationSettings();
-        setState(() {
-          _isLoading = false;
-        });
+        setState(() => _isLoading = false);
         return;
       }
 
-      // Request permission
       if (!await locationService.requestLocationPermission()) {
-        _showToast(
-          'Location permission denied. Please grant permission in settings.',
-        );
+        _showToast('Location permission denied. Please grant permission in settings.');
         await locationService.openAppSettings();
-        setState(() {
-          _isLoading = false;
-        });
+        setState(() => _isLoading = false);
         return;
       }
 
-      // Get current location (now returns a Map with doubles)
       final position = await locationService.getCurrentLocation();
       if (position == null) {
         _showToast('Unable to get current location. Please try again.');
-        setState(() {
-          _isLoading = false;
-        });
+        setState(() => _isLoading = false);
         return;
       }
 
       final lat = (position['latitude'] as num).toDouble();
       final lng = (position['longitude'] as num).toDouble();
 
-      // Get address from coordinates
       final address = await locationService.getAddressFromCoordinates(lat, lng);
 
       if (address != null) {
-        // Get timezone for the location
         final timezone = await locationService.getTimezone(lat, lng);
 
-        // Update location data
         final displayLocation = address;
         final displayTimezone = _formatTimezone(timezone ?? 'UTC');
 
-        // Save to SharedPreferences
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString('user_location', displayLocation);
         await prefs.setString('user_timezone', displayTimezone);
         await prefs.setDouble('user_latitude', lat);
         await prefs.setDouble('user_longitude', lng);
 
-        // Save to Supabase if available (accepts the same map-shaped position)
-        await locationService.saveLocationToSupabase(
-          position,
-          address: address,
-        );
+        // NOTE: Signature does not accept a named `address` param.
+        await locationService.saveLocationToSupabase(position);
 
         setState(() {
           _currentLocation = displayLocation;
           _currentTimezone = displayTimezone;
         });
 
-        // Notify parent
-        widget.onLocationChanged(
-          _currentLocation,
-          _currentTimezone,
-          _gpsAccuracy,
-        );
+        widget.onLocationChanged(_currentLocation, _currentTimezone, _gpsAccuracy);
 
         _showToast('Location updated successfully');
       } else {
@@ -374,9 +332,7 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
       }
     } catch (e) {
       print('Error refreshing location: $e');
-      _showToast(
-        'Error getting location. Please check your connection and try again.',
-      );
+      _showToast('Error getting location. Please check your connection and try again.');
     } finally {
       setState(() {
         _isLoading = false;
@@ -390,12 +346,10 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
       _gpsAccuracy = value ? 'High' : 'Balanced';
     });
 
-    // Save preference
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('high_precision_gps', value);
     await prefs.setString('gps_accuracy', _gpsAccuracy);
 
-    // Update parent
     widget.onLocationChanged(_currentLocation, _currentTimezone, _gpsAccuracy);
 
     _showToast('GPS accuracy set to ${_gpsAccuracy.toLowerCase()} precision');
@@ -414,7 +368,6 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
       'Australia/Sydney': 'AEDT (GMT+11)',
       'UTC': 'UTC (GMT+0)',
     };
-
     return timezoneMapping[timezone] ?? 'Local Time';
   }
 
