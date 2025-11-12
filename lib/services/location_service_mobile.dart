@@ -1,5 +1,12 @@
 import 'package:geolocator/geolocator.dart';
 
+class PositionData {
+  final double latitude;
+  final double longitude;
+  final String address;
+  PositionData(this.latitude, this.longitude, this.address);
+}
+
 class LocationService {
   static final instance = LocationService._internal();
   LocationService._internal();
@@ -13,41 +20,30 @@ class LocationService {
         permission == LocationPermission.whileInUse;
   }
 
-  Future<void> openLocationSettings() async =>
-      Geolocator.openLocationSettings();
+  Future<void> openLocationSettings() async => Geolocator.openLocationSettings();
+  Future<void> openAppSettings() async => Geolocator.openAppSettings();
 
-  Future<void> openAppSettings() async =>
-      Geolocator.openAppSettings();
-
-  Future<Map<String, dynamic>> getCurrentLocation() async {
+  Future<PositionData> getCurrentLocation() async {
     await Geolocator.requestPermission();
     final pos = await Geolocator.getCurrentPosition();
     final lat = pos.latitude;
     final lon = pos.longitude;
+    final address = '$lat, $lon';
+    return PositionData(lat, lon, address);
+  }
 
-    return {
-      'latitude': lat,
-      'longitude': lon,
-      'address': '$lat, $lon'
-    };
+  Future<String> getAddressFromCoordinates(double lat, double lon) async {
+    return '$lat, $lon';
   }
 
   Future<String> getTimezone([double? lat, double? lon]) async =>
       DateTime.now().timeZoneName;
 
-  Future<void> saveLocationToSupabase([dynamic arg1, dynamic arg2]) async {
-    double lat;
-    double lon;
-    if (arg1 is Map) {
-      lat = (arg1['latitude'] ?? 0).toDouble();
-      lon = (arg1['longitude'] ?? 0).toDouble();
-    } else {
-      lat = (arg1 ?? 0).toDouble();
-      lon = (arg2 ?? 0).toDouble();
-    }
-    print('Saving location to Supabase: $lat, $lon');
+  Future<void> saveLocationToSupabase(PositionData position) async {
+    print('Saving location to Supabase: ${position.latitude}, ${position.longitude}');
   }
 
-  Future<Map<String, double>> getCurrentLocationFromSupabase() async =>
-      {'latitude': 0.0, 'longitude': 0.0};
+  Future<PositionData> getCurrentLocationFromSupabase() async {
+    return PositionData(0.0, 0.0, 'Unknown');
+  }
 }
