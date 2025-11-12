@@ -1,12 +1,16 @@
 import 'package:geolocator/geolocator.dart';
 
 class LocationService {
-  Future<void> init() async {
+  static final instance = LocationService._internal();
+  LocationService._internal();
+
+  Future<Position> getCurrentLocation() async {
     await Geolocator.requestPermission();
+    return await Geolocator.getCurrentPosition();
   }
 
-  Future<String> getLocation() async {
-    final pos = await Geolocator.getCurrentPosition();
-    return '${pos.latitude}, ${pos.longitude}';
+  Future<String> getAddressFromCoordinates(double lat, double lon) async {
+    // Placeholder if you later add geocoding
+    return '$lat, $lon';
   }
 }
