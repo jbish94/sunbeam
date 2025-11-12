@@ -6,5 +6,4 @@ flutter --version
 flutter config --enable-web
 flutter precache --web
 flutter pub get
-# Use default renderer to avoid CLI flag mismatch
-flutter build web --release
+flutter build web -v --release
