@@ -211,7 +211,7 @@ class WeatherService {
   /// Get weather data for user's current location
   Future<Map<String, dynamic>?> getWeatherForCurrentLocation() async {
     try {
-      final locationService = LocationService.instance;
+      final locationService = LocationService();
       final position = await locationService.getCurrentLocation();
       if (position == null) {
         throw Exception('Could not get current location');
@@ -230,7 +230,7 @@ class WeatherService {
   /// Update weather data and (optionally) save to database
   Future<Map<String, dynamic>?> updateAndSaveWeatherData() async {
     try {
-      final locationService = LocationService.instance;
+      final locationService = LocationService();
 
       final position = await locationService.getCurrentLocation();
       if (position == null) return null;
