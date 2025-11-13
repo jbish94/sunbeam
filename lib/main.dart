@@ -39,7 +39,7 @@ void main() async {
   Future.wait([
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp])
   ]).then((value) {
-    runApp(MyApp());
+    runApp(const MyApp());
   });
 }
 
@@ -48,53 +48,56 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Sizer(
-      builder: (context, orientation, screenType) {
-        // Your actual app
-        final Widget baseApp = MaterialApp(
-          title: 'sunbeam',
-          theme: AppTheme.lightTheme,
-          darkTheme: AppTheme.darkTheme,
-          themeMode: ThemeMode.light,
-          // 🚨 CRITICAL: NEVER REMOVE OR MODIFY
-          builder: (context, child) {
-            return MediaQuery(
-              data: MediaQuery.of(context).copyWith(
-                textScaler: const TextScaler.linear(1.0),
-              ),
-              child: child!,
-            );
+    // Your actual app
+    final Widget baseApp = MaterialApp(
+      title: 'sunbeam',
+      theme: AppTheme.lightTheme,
+      darkTheme: AppTheme.darkTheme,
+      themeMode: ThemeMode.light,
+      // 🚨 CRITICAL: NEVER REMOVE OR MODIFY
+      builder: (context, child) {
+        return MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            textScaler: const TextScaler.linear(1.0),
+          ),
+          child: child!,
+        );
+      },
+      // 🚨 END CRITICAL SECTION
+      debugShowCheckedModeBanner: false,
+      routes: AppRoutes.routes,
+      initialRoute: AppRoutes.initial,
+    );
+
+    // Outer layout decides: full app vs. phone frame
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // Sizer must be inside the constraints it should use
+        Widget sizedApp = Sizer(
+          builder: (context, orientation, screenType) {
+            return baseApp;
           },
-          // 🚨 END CRITICAL SECTION
-          debugShowCheckedModeBanner: false,
-          routes: AppRoutes.routes,
-          initialRoute: AppRoutes.initial,
         );
 
-        // Phone-frame wrapper for web / large screens
-        return LayoutBuilder(
-          builder: (context, constraints) {
-            // On narrow screens (real phones), just show the app normally.
-            if (constraints.maxWidth <= 600) {
-              return baseApp;
-            }
+        // On narrow screens (real phones), just show the app normally
+        if (constraints.maxWidth <= 600) {
+          return sizedApp;
+        }
 
-            // On wider screens (desktop/tablet), center and clamp the width
-            return Container(
-              color: Colors.black, // background behind the "phone"
-              alignment: Alignment.center,
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(32),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(
-                    maxWidth: 430, // typical phone width in logical pixels
-                    maxHeight: 900, // optional: gives more of a phone feel
-                  ),
-                  child: baseApp,
-                ),
+        // On wider screens (desktop/tablet), center a phone-sized app
+        return Container(
+          color: Colors.black,
+          alignment: Alignment.center,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(32),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(
+                maxWidth: 430,   // virtual phone width
+                maxHeight: 900,  // virtual phone height
               ),
-            );
-          },
+              child: sizedApp,   // Sizer now sees 430x900, not the full desktop
+            ),
+          ),
         );
       },
     );
