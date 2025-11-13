@@ -1,8 +1,11 @@
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class LocationService {
   static const _locationTimeout = Duration(seconds: 12);
+
+  final SupabaseClient _supabase = Supabase.instance.client;
 
   Future<bool> isLocationServiceEnabled() {
     return Geolocator.isLocationServiceEnabled();
@@ -30,21 +33,26 @@ class LocationService {
         permission == LocationPermission.whileInUse;
   }
 
-  Future<Position> getCurrentLocation() async {
+  /// Returns null if service/permission fails.
+  Future<Position?> getCurrentLocation() async {
     final enabled = await isLocationServiceEnabled();
     if (!enabled) {
-      throw Exception('Location services are disabled');
+      return null;
     }
 
     final granted = await requestLocationPermission();
     if (!granted) {
-      throw Exception('Location permission denied');
+      return null;
     }
 
-    return Geolocator.getCurrentPosition(
-      desiredAccuracy: LocationAccuracy.high,
-      timeLimit: _locationTimeout,
-    );
+    try {
+      return await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+        timeLimit: _locationTimeout,
+      );
+    } catch (_) {
+      return null;
+    }
   }
 
   Future<String?> getAddressFromCoordinates(double lat, double lng) async {
@@ -63,51 +71,49 @@ class LocationService {
     return parts.join(', ');
   }
 
+  /// Simple fallback: device timezone name.
   Future<String?> getTimezone(double lat, double lng) async {
-    // Simple fallback: device timezone name.
     return DateTime.now().timeZoneName;
   }
 
-  import 'package:geolocator/geolocator.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+  /// Save latest location for user into Supabase.
+  Future<void> saveLocationToSupabase(Position position) async {
+    final user = _supabase.auth.currentUser;
+    if (user == null) {
+      // Not logged in, nothing to save.
+      return;
+    }
 
-// inside class LocationService { ... }
-
-final _supabase = Supabase.instance.client;
-
-Future<void> saveLocationToSupabase(Position position) async {
-  final user = _supabase.auth.currentUser;
-  if (user == null) {
-    return; // or throw, depending on your auth model
+    await _supabase.from('user_locations').upsert({
+      'user_id': user.id,
+      'latitude': position.latitude,
+      'longitude': position.longitude,
+      'updated_at': DateTime.now().toIso8601String(),
+    });
   }
 
-  await _supabase.from('user_locations').upsert({
-    'user_id': user.id,
-    'latitude': position.latitude,
-    'longitude': position.longitude,
-    'updated_at': DateTime.now().toIso8601String(),
-  });
-}
-
-  /// Used by HomeScreen and others: get current position + address.
+  /// Used by HomeScreen and others: get current position + address + timezone.
   Future<Map<String, dynamic>?> fetchAndSaveLocation() async {
     final position = await getCurrentLocation();
+    if (position == null) return null;
+
     final address =
         await getAddressFromCoordinates(position.latitude, position.longitude);
+    final timezone =
+        await getTimezone(position.latitude, position.longitude);
+
+    // Optionally save in Supabase as well:
+    await saveLocationToSupabase(position);
 
     return {
       'latitude': position.latitude,
       'longitude': position.longitude,
       'address': address,
-      'timezone': await getTimezone(
-        position.latitude,
-        position.longitude,
-      ),
+      'timezone': timezone,
     };
   }
 
-  /// Stub for existing callers expecting this method.
-  /// Extend later if you truly want to read location from Supabase.
+  /// Stub for callers that may expect this; implement later if needed.
   Future<Map<String, dynamic>?> getCurrentLocationFromSupabase() async {
     return null;
   }
