@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:sizer/sizer.dart';
@@ -12,18 +15,31 @@ void main() async {
   // Initialize Supabase
   try {
     await SupabaseService.initialize();
-  } catch (e) {
+  } catch (e, st) {
     debugPrint('Failed to initialize Supabase: $e');
+    debugPrint('$st');
   }
 
   bool _hasShownError = false;
 
-  // 🚨 CRITICAL: Custom error handling - DO NOT REMOVE
+  // Global Flutter error handler (logs more detail)
+  FlutterError.onError = (FlutterErrorDetails details) {
+    debugPrint('FlutterError: ${details.exceptionAsString()}');
+    debugPrint('${details.stack}');
+  };
+
+  // Platform (zone) error handler for async errors
+  PlatformDispatcher.instance.onError = (Object error, StackTrace stack) {
+    debugPrint('Platform error: $error');
+    debugPrint('$stack');
+    return true; // prevent app from hard-crashing
+  };
+
+  // 🚨 CRITICAL: Custom error handling widget
   ErrorWidget.builder = (FlutterErrorDetails details) {
     if (!_hasShownError) {
       _hasShownError = true;
 
-      // Reset flag after 5 seconds to allow error widget on new screens
       Future.delayed(const Duration(seconds: 5), () {
         _hasShownError = false;
       });
@@ -35,12 +51,19 @@ void main() async {
     return const SizedBox.shrink();
   };
 
-  // 🚨 CRITICAL: Device orientation lock - DO NOT REMOVE
-  Future.wait([
-    SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp])
-  ]).then((value) {
-    runApp(MyApp());
-  });
+  // 🚨 CRITICAL: Device orientation lock
+  await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
+
+  // Wrap runApp in a guarded zone so uncaught async errors are logged, not fatal
+  runZonedGuarded(
+    () {
+      runApp(MyApp());
+    },
+    (error, stack) {
+      debugPrint('Uncaught zone error: $error');
+      debugPrint('$stack');
+    },
+  );
 }
 
 class MyApp extends StatelessWidget {
@@ -52,7 +75,7 @@ class MyApp extends StatelessWidget {
         theme: AppTheme.lightTheme,
         darkTheme: AppTheme.darkTheme,
         themeMode: ThemeMode.light,
-        // 🚨 CRITICAL: NEVER REMOVE OR MODIFY (extended to constrain width)
+        // 🚨 CRITICAL: text scaling + web width constraint
         builder: (context, child) {
           if (child == null) return const SizedBox.shrink();
 
@@ -65,14 +88,13 @@ class MyApp extends StatelessWidget {
             child: Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(
-                  maxWidth: 430, // “phone” width on desktop
+                  maxWidth: 430, // mobile-width feel on desktop
                 ),
                 child: child,
               ),
             ),
           );
         },
-        // 🚨 END CRITICAL SECTION
         debugShowCheckedModeBanner: false,
         routes: AppRoutes.routes,
         initialRoute: AppRoutes.initial,
