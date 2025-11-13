@@ -299,8 +299,8 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
         return;
       }
 
-      final lat = (position['latitude'] as num).toDouble();
-      final lng = (position['longitude'] as num).toDouble();
+      final lat = position.latitude;
+      final lng = position.longitude;
 
       final address = await locationService.getAddressFromCoordinates(lat, lng);
 
