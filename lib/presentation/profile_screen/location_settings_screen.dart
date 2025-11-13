@@ -103,8 +103,11 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
                                 ),
                                 Text(
                                   _currentLocation,
-                                  style: AppTheme.lightTheme.textTheme.bodyMedium
-                                      ?.copyWith(fontWeight: FontWeight.w500),
+                                  style: AppTheme
+                                      .lightTheme.textTheme.bodyMedium
+                                      ?.copyWith(
+                                    fontWeight: FontWeight.w500,
+                                  ),
                                 ),
                               ],
                             ),
@@ -150,8 +153,11 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
                                 ),
                                 Text(
                                   _currentTimezone,
-                                  style: AppTheme.lightTheme.textTheme.bodyMedium
-                                      ?.copyWith(fontWeight: FontWeight.w500),
+                                  style: AppTheme
+                                      .lightTheme.textTheme.bodyMedium
+                                      ?.copyWith(
+                                    fontWeight: FontWeight.w500,
+                                  ),
                                 ),
                               ],
                             ),
@@ -211,8 +217,10 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
                       SizedBox(height: 0.5.h),
                       Text(
                         'Current accuracy: ${_gpsAccuracy.toLowerCase()} precision',
-                        style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
-                          color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+                        style:
+                            AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+                          color: AppTheme
+                              .lightTheme.colorScheme.onSurfaceVariant,
                         ),
                       ),
                     ],
@@ -279,14 +287,16 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
       final locationService = LocationService();
 
       if (!await locationService.isLocationServiceEnabled()) {
-        _showToast('Location service is disabled. Please enable it in settings.');
+        _showToast(
+            'Location service is disabled. Please enable it in settings.');
         await locationService.openLocationSettings();
         setState(() => _isLoading = false);
         return;
       }
 
       if (!await locationService.requestLocationPermission()) {
-        _showToast('Location permission denied. Please grant permission in settings.');
+        _showToast(
+            'Location permission denied. Please grant permission in settings.');
         await locationService.openAppSettings();
         setState(() => _isLoading = false);
         return;
@@ -316,7 +326,6 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
         await prefs.setDouble('user_latitude', lat);
         await prefs.setDouble('user_longitude', lng);
 
-        // NOTE: Signature does not accept a named `address` param.
         await locationService.saveLocationToSupabase(position);
 
         setState(() {
@@ -324,7 +333,8 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
           _currentTimezone = displayTimezone;
         });
 
-        widget.onLocationChanged(_currentLocation, _currentTimezone, _gpsAccuracy);
+        widget.onLocationChanged(
+            _currentLocation, _currentTimezone, _gpsAccuracy);
 
         _showToast('Location updated successfully');
       } else {
@@ -332,7 +342,8 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
       }
     } catch (e) {
       print('Error refreshing location: $e');
-      _showToast('Error getting location. Please check your connection and try again.');
+      _showToast(
+          'Error getting location. Please check your connection and try again.');
     } finally {
       setState(() {
         _isLoading = false;
