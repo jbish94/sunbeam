@@ -48,5 +48,9 @@
         <key>NSAllowsArbitraryLoads</key>
         <true />
     </dict>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Sunbeam needs your location to provide accurate UV index data, weather information, and optimal sun exposure recommendations for your area.</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Sunbeam needs your location to track sun exposure sessions and provide location-based UV safety recommendations.</string>
 </dict>
 </plist>
