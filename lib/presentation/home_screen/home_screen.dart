@@ -19,11 +19,14 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
+class _HomeScreenState extends State<HomeScreen>
+    with TickerProviderStateMixin, WidgetsBindingObserver {
   int _selectedIndex = 0;
   bool _isRefreshing = false;
   bool _isLoadingWeather = false;
   String _currentLocation = 'Fetching location...';
+  bool _hasShownPermissionDialog = false;
+  bool _wasInBackground = false;
 
   final LocationService _locationService = LocationService.instance;
   final WeatherService _weatherService = WeatherService.instance;
@@ -84,8 +87,36 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadGoalSettings();
     _initializeLocationAndWeather();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    debugPrint('📱 [HomeScreen] App lifecycle state: $state');
+
+    if (state == AppLifecycleState.paused) {
+      _wasInBackground = true;
+      debugPrint('📱 [HomeScreen] App went to background');
+    } else if (state == AppLifecycleState.resumed && _wasInBackground) {
+      _wasInBackground = false;
+      debugPrint('📱 [HomeScreen] App returned from background - retrying location');
+      // User might have just enabled permissions in settings, retry
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (_currentLocation.contains('unavailable') ||
+            _currentLocation.contains('error')) {
+          _updateLocationAndWeather();
+        }
+      });
+    }
   }
 
   Future<void> _initializeLocationAndWeather() async {
@@ -136,21 +167,98 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           debugPrint('⚠️ [HomeScreen] Weather data is null');
         }
       } else {
-        // Location fetch failed - update UI with appropriate message
+        // Location fetch failed - show dialog to help user
         debugPrint('❌ [HomeScreen] Location data is null - check permissions');
         setState(() {
-          _currentLocation = 'Location unavailable (Tap to retry)';
+          _currentLocation = 'Location unavailable';
         });
+        _showLocationPermissionDialog();
       }
     } catch (e) {
       debugPrint('❌ [HomeScreen] Error updating location/weather: $e');
       setState(() {
-        _currentLocation = 'Location error (Tap to retry)';
+        _currentLocation = 'Location error';
       });
+      _showLocationPermissionDialog();
     } finally {
       setState(() => _isLoadingWeather = false);
       debugPrint('📍 [HomeScreen] Location and weather update completed');
     }
+  }
+
+  Future<void> _showLocationPermissionDialog() async {
+    if (!mounted || _hasShownPermissionDialog) return;
+
+    _hasShownPermissionDialog = true;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Row(
+            children: [
+              Icon(Icons.location_off, color: Colors.red, size: 24),
+              SizedBox(width: 2.w),
+              const Text('Location Permission Needed'),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Sunbeam needs location access to provide:',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              SizedBox(height: 1.h),
+              const Text('• Accurate UV index for your area'),
+              const Text('• Real-time weather conditions'),
+              const Text('• Optimal sun exposure recommendations'),
+              SizedBox(height: 2.h),
+              Container(
+                padding: EdgeInsets.all(2.w),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.orange.shade200),
+                ),
+                child: const Text(
+                  'Please enable location permissions in your device settings.',
+                  style: TextStyle(fontSize: 13),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _hasShownPermissionDialog = false; // Allow showing again if user cancels
+              },
+              child: const Text('Later'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                Navigator.of(context).pop();
+                debugPrint('📍 [HomeScreen] Opening app settings...');
+                await _locationService.openAppSettings();
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.lightTheme.primaryColor,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Open Settings'),
+            ),
+          ],
+        );
+      },
+    ).then((_) {
+      // When dialog is dismissed, allow refresh to try again
+      setState(() {
+        _currentLocation = 'Location unavailable';
+      });
+    });
   }
 
   Future<void> _loadGoalSettings() async {
@@ -340,36 +448,46 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           SizedBox(height: 2.h),
           Row(
             children: [
-              InkWell(
-                onTap: _currentLocation.contains('unavailable') ||
-                        _currentLocation.contains('error') ||
-                        _currentLocation.contains('Fetching')
-                    ? () {
-                        debugPrint('📍 [HomeScreen] User tapped to retry location');
-                        _updateLocationAndWeather();
-                      }
-                    : null,
+              Expanded(
                 child: Row(
-                  mainAxisSize: MainAxisSize.min,
                   children: [
                     CustomIconWidget(
                       iconName: 'location_on',
-                      color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+                      color: _currentLocation.contains('unavailable') ||
+                              _currentLocation.contains('error')
+                          ? Colors.red
+                          : AppTheme.lightTheme.colorScheme.onSurfaceVariant,
                       size: 16,
                     ),
                     SizedBox(width: 1.w),
-                    Text(
-                      _currentLocation,
-                      style:
-                          AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
-                        color:
-                            AppTheme.lightTheme.colorScheme.onSurfaceVariant,
-                        decoration: _currentLocation.contains('Tap to retry')
-                            ? TextDecoration.underline
-                            : null,
+                    Expanded(
+                      child: Text(
+                        _currentLocation,
+                        style: AppTheme.lightTheme.textTheme.bodyMedium
+                            ?.copyWith(
+                          color: _currentLocation.contains('unavailable') ||
+                                  _currentLocation.contains('error')
+                              ? Colors.red
+                              : AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+                        ),
+                        overflow: TextOverflow.ellipsis,
                       ),
-                      overflow: TextOverflow.ellipsis,
                     ),
+                    if (_currentLocation.contains('unavailable') ||
+                        _currentLocation.contains('error'))
+                      IconButton(
+                        icon: const Icon(Icons.refresh, size: 20),
+                        onPressed: () {
+                          debugPrint(
+                              '📍 [HomeScreen] User tapped refresh button');
+                          _hasShownPermissionDialog = false;
+                          _showLocationPermissionDialog();
+                        },
+                        color: AppTheme.lightTheme.primaryColor,
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(),
+                        tooltip: 'Enable location',
+                      ),
                   ],
                 ),
               ),
@@ -383,10 +501,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               Text(
                 _currentWeatherData['condition'] as String? ??
                     'Partly Sunny',
-                style:
-                    AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
-                  color:
-                      AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+                style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
+                  color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
                 ),
               ),
             ],
