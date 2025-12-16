@@ -26,21 +26,26 @@ class LocationService {
 
   Future<bool> requestLocationPermission() async {
     try {
+      debugPrint('🔐 [LocationService] Checking current permission status...');
       var permission = await Geolocator.checkPermission();
+      debugPrint('🔐 [LocationService] Current permission: $permission');
 
       if (permission == LocationPermission.always ||
           permission == LocationPermission.whileInUse) {
+        debugPrint('✅ [LocationService] Permission already granted');
         return true;
       }
 
+      debugPrint('🔐 [LocationService] Requesting permission from user...');
       permission = await Geolocator.requestPermission();
+      debugPrint('🔐 [LocationService] Permission after request: $permission');
 
-      return permission == LocationPermission.always ||
+      final granted = permission == LocationPermission.always ||
           permission == LocationPermission.whileInUse;
+      debugPrint('🔐 [LocationService] Final permission granted: $granted');
+      return granted;
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('Error requesting location permission: $e');
-      }
+      debugPrint('❌ [LocationService] Error requesting location permission: $e');
       return false;
     }
   }
@@ -49,30 +54,34 @@ class LocationService {
 
   Future<Position?> getCurrentLocation() async {
     try {
+      debugPrint('🔍 [LocationService] Checking if location service is enabled...');
       final enabled = await isLocationServiceEnabled();
+      debugPrint('🔍 [LocationService] Location service enabled: $enabled');
+
       if (!enabled) {
-        if (kDebugMode) {
-          debugPrint('Location services are disabled');
-        }
+        debugPrint('❌ [LocationService] Location services are disabled');
         return null;
       }
 
+      debugPrint('🔍 [LocationService] Requesting location permission...');
       final granted = await requestLocationPermission();
+      debugPrint('🔍 [LocationService] Location permission granted: $granted');
+
       if (!granted) {
-        if (kDebugMode) {
-          debugPrint('Location permission denied');
-        }
+        debugPrint('❌ [LocationService] Location permission denied');
         return null;
       }
 
-      return await Geolocator.getCurrentPosition(
+      debugPrint('🔍 [LocationService] Getting current position...');
+      final position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
         timeLimit: _locationTimeout,
       );
+      debugPrint('✅ [LocationService] Position obtained: ${position.latitude}, ${position.longitude}');
+      return position;
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('Error getting current location: $e');
-      }
+      debugPrint('❌ [LocationService] Error getting current location: $e');
+      debugPrint('❌ [LocationService] Stack trace: ${StackTrace.current}');
       return null;
     }
   }

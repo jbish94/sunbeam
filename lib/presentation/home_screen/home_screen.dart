@@ -93,23 +93,30 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _updateLocationAndWeather() async {
+    debugPrint('📍 [HomeScreen] Starting location and weather update...');
     setState(() => _isLoadingWeather = true);
 
     try {
+      debugPrint('📍 [HomeScreen] Calling fetchAndSaveLocation...');
       final locationData = await _locationService.fetchAndSaveLocation();
+      debugPrint('📍 [HomeScreen] Location data received: ${locationData != null ? "SUCCESS" : "NULL"}');
+
       if (locationData != null) {
         final lat = (locationData['latitude'] as num).toDouble();
         final lng = (locationData['longitude'] as num).toDouble();
+        debugPrint('📍 [HomeScreen] Coordinates: $lat, $lng');
 
         setState(() {
           _currentLocation = locationData['address'] ??
               "${lat.toStringAsFixed(4)}, ${lng.toStringAsFixed(4)}";
         });
 
+        debugPrint('📍 [HomeScreen] Fetching weather data...');
         final weatherData =
             await _weatherService.getCompleteWeatherData(lat, lng);
 
         if (weatherData != null) {
+          debugPrint('📍 [HomeScreen] Weather data received successfully');
           setState(() {
             _currentWeatherData = {
               'temperature':
@@ -125,21 +132,24 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               'description': weatherData['description'] ?? 'Partly sunny',
             };
           });
+        } else {
+          debugPrint('⚠️ [HomeScreen] Weather data is null');
         }
       } else {
         // Location fetch failed - update UI with appropriate message
+        debugPrint('❌ [HomeScreen] Location data is null - check permissions');
         setState(() {
-          _currentLocation = 'Location unavailable';
+          _currentLocation = 'Location unavailable (Tap to retry)';
         });
-        debugPrint('Location data is null - check permissions');
       }
     } catch (e) {
-      debugPrint('Error updating location/weather: $e');
+      debugPrint('❌ [HomeScreen] Error updating location/weather: $e');
       setState(() {
-        _currentLocation = 'Location error';
+        _currentLocation = 'Location error (Tap to retry)';
       });
     } finally {
       setState(() => _isLoadingWeather = false);
+      debugPrint('📍 [HomeScreen] Location and weather update completed');
     }
   }
 
@@ -330,21 +340,37 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           SizedBox(height: 2.h),
           Row(
             children: [
-              CustomIconWidget(
-                iconName: 'location_on',
-                color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
-                size: 16,
-              ),
-              SizedBox(width: 1.w),
-              Expanded(
-                child: Text(
-                  _currentLocation,
-                  style:
-                      AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
-                    color:
-                        AppTheme.lightTheme.colorScheme.onSurfaceVariant,
-                  ),
-                  overflow: TextOverflow.ellipsis,
+              InkWell(
+                onTap: _currentLocation.contains('unavailable') ||
+                        _currentLocation.contains('error') ||
+                        _currentLocation.contains('Fetching')
+                    ? () {
+                        debugPrint('📍 [HomeScreen] User tapped to retry location');
+                        _updateLocationAndWeather();
+                      }
+                    : null,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CustomIconWidget(
+                      iconName: 'location_on',
+                      color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+                      size: 16,
+                    ),
+                    SizedBox(width: 1.w),
+                    Text(
+                      _currentLocation,
+                      style:
+                          AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
+                        color:
+                            AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+                        decoration: _currentLocation.contains('Tap to retry')
+                            ? TextDecoration.underline
+                            : null,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
                 ),
               ),
               SizedBox(width: 4.w),
