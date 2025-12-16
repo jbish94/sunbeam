@@ -24,6 +24,21 @@ class LocationService {
     return Geolocator.openAppSettings();
   }
 
+  /// Get detailed permission status for debugging
+  Future<String> getPermissionStatus() async {
+    try {
+      final permission = await Geolocator.checkPermission();
+      final serviceEnabled = await isLocationServiceEnabled();
+
+      return '''
+Permission: $permission
+Service Enabled: $serviceEnabled
+''';
+    } catch (e) {
+      return 'Error checking permission: $e';
+    }
+  }
+
   Future<bool> requestLocationPermission() async {
     try {
       debugPrint('🔐 [LocationService] Checking current permission status...');
@@ -36,9 +51,19 @@ class LocationService {
         return true;
       }
 
+      if (permission == LocationPermission.deniedForever) {
+        debugPrint('❌ [LocationService] Permission permanently denied - user must enable in settings');
+        return false;
+      }
+
       debugPrint('🔐 [LocationService] Requesting permission from user...');
       permission = await Geolocator.requestPermission();
       debugPrint('🔐 [LocationService] Permission after request: $permission');
+
+      if (permission == LocationPermission.deniedForever) {
+        debugPrint('❌ [LocationService] User denied permission permanently');
+        return false;
+      }
 
       final granted = permission == LocationPermission.always ||
           permission == LocationPermission.whileInUse;
@@ -46,6 +71,7 @@ class LocationService {
       return granted;
     } catch (e) {
       debugPrint('❌ [LocationService] Error requesting location permission: $e');
+      debugPrint('❌ [LocationService] Exception type: ${e.runtimeType}');
       return false;
     }
   }
@@ -87,19 +113,35 @@ class LocationService {
   }
 
   Future<String?> getAddressFromCoordinates(double lat, double lng) async {
-    final placemarks = await placemarkFromCoordinates(lat, lng);
-    if (placemarks.isEmpty) return null;
+    try {
+      debugPrint('🗺️ [LocationService] Getting address for: $lat, $lng');
+      final placemarks = await placemarkFromCoordinates(lat, lng);
 
-    final p = placemarks.first;
-    final parts = <String>[
-      if (p.locality != null && p.locality!.isNotEmpty) p.locality!,
-      if (p.administrativeArea != null && p.administrativeArea!.isNotEmpty)
-        p.administrativeArea!,
-      if (p.country != null && p.country!.isNotEmpty) p.country!,
-    ];
+      if (placemarks.isEmpty) {
+        debugPrint('⚠️ [LocationService] No placemarks found');
+        return null;
+      }
 
-    if (parts.isEmpty) return null;
-    return parts.join(', ');
+      final p = placemarks.first;
+      final parts = <String>[
+        if (p.locality != null && p.locality!.isNotEmpty) p.locality!,
+        if (p.administrativeArea != null && p.administrativeArea!.isNotEmpty)
+          p.administrativeArea!,
+        if (p.country != null && p.country!.isNotEmpty) p.country!,
+      ];
+
+      if (parts.isEmpty) {
+        debugPrint('⚠️ [LocationService] No address parts found');
+        return null;
+      }
+
+      final address = parts.join(', ');
+      debugPrint('✅ [LocationService] Address found: $address');
+      return address;
+    } catch (e) {
+      debugPrint('❌ [LocationService] Error getting address: $e');
+      return null;
+    }
   }
 
   Future<String?> getTimezone(double lat, double lng) async {

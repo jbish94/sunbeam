@@ -198,9 +198,14 @@ class _HomeScreenState extends State<HomeScreen>
         return AlertDialog(
           title: Row(
             children: [
-              Icon(Icons.location_off, color: Colors.red, size: 24),
+              Icon(Icons.location_off, color: Colors.red, size: 20),
               SizedBox(width: 2.w),
-              const Text('Location Permission Needed'),
+              Flexible(
+                child: Text(
+                  'Location Permission',
+                  style: TextStyle(fontSize: 16),
+                ),
+              ),
             ],
           ),
           content: Column(
