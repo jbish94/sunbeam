@@ -203,10 +203,11 @@ class WeatherService {
 
   Future<Map<String, dynamic>?> getWeatherForCurrentLocation() async {
     try {
-      final locationService = LocationService();
+      final locationService = LocationService.instance;
       final position = await locationService.getCurrentLocation();
       if (position == null) {
-        throw Exception('Could not get current location');
+        print('Could not get current location');
+        return null;
       }
 
       final lat = position.latitude;
@@ -221,12 +222,15 @@ class WeatherService {
 
   Future<Map<String, dynamic>?> updateAndSaveWeatherData() async {
     try {
-      final locationService = LocationService();
+      final locationService = LocationService.instance;
 
       final position = await locationService.getCurrentLocation();
-      if (position == null) return null;
+      if (position == null) {
+        print('Could not get current location');
+        return null;
+      }
 
-      await locationService.saveLocationToSupabase(position);
+      final locationId = await locationService.saveLocationToSupabase(position);
 
       final lat = position.latitude;
       final lng = position.longitude;
@@ -234,8 +238,11 @@ class WeatherService {
       final weatherData = await getCompleteWeatherData(lat, lng);
       if (weatherData == null) return null;
 
-      // If you have a locationId, you can call:
-      // await saveWeatherToSupabase(weatherData, locationId);
+      // Save weather data to Supabase if we have a location ID
+      if (locationId != null) {
+        await saveWeatherToSupabase(weatherData, locationId);
+      }
+
       return weatherData;
     } catch (e) {
       print('Error updating and saving weather data: $e');

@@ -25,7 +25,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   bool _isLoadingWeather = false;
   String _currentLocation = 'Fetching location...';
 
-  final LocationService _locationService = LocationService();
+  final LocationService _locationService = LocationService.instance;
   final WeatherService _weatherService = WeatherService.instance;
 
   Map<String, dynamic> userGoals = {
@@ -126,9 +126,18 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             };
           });
         }
+      } else {
+        // Location fetch failed - update UI with appropriate message
+        setState(() {
+          _currentLocation = 'Location unavailable';
+        });
+        debugPrint('Location data is null - check permissions');
       }
     } catch (e) {
       debugPrint('Error updating location/weather: $e');
+      setState(() {
+        _currentLocation = 'Location error';
+      });
     } finally {
       setState(() => _isLoadingWeather = false);
     }

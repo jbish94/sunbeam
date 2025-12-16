@@ -4,6 +4,10 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart';
 
 class LocationService {
+  // Singleton pattern
+  static final instance = LocationService._internal();
+  LocationService._internal();
+
   static const _locationTimeout = Duration(seconds: 12);
 
   // ---------- Permissions / settings ----------
@@ -21,36 +25,56 @@ class LocationService {
   }
 
   Future<bool> requestLocationPermission() async {
-    var permission = await Geolocator.checkPermission();
+    try {
+      var permission = await Geolocator.checkPermission();
 
-    if (permission == LocationPermission.always ||
-        permission == LocationPermission.whileInUse) {
-      return true;
+      if (permission == LocationPermission.always ||
+          permission == LocationPermission.whileInUse) {
+        return true;
+      }
+
+      permission = await Geolocator.requestPermission();
+
+      return permission == LocationPermission.always ||
+          permission == LocationPermission.whileInUse;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('Error requesting location permission: $e');
+      }
+      return false;
     }
-
-    permission = await Geolocator.requestPermission();
-
-    return permission == LocationPermission.always ||
-        permission == LocationPermission.whileInUse;
   }
 
   // ---------- Core location helpers ----------
 
-  Future<Position> getCurrentLocation() async {
-    final enabled = await isLocationServiceEnabled();
-    if (!enabled) {
-      throw Exception('Location services are disabled');
-    }
+  Future<Position?> getCurrentLocation() async {
+    try {
+      final enabled = await isLocationServiceEnabled();
+      if (!enabled) {
+        if (kDebugMode) {
+          debugPrint('Location services are disabled');
+        }
+        return null;
+      }
 
-    final granted = await requestLocationPermission();
-    if (!granted) {
-      throw Exception('Location permission denied');
-    }
+      final granted = await requestLocationPermission();
+      if (!granted) {
+        if (kDebugMode) {
+          debugPrint('Location permission denied');
+        }
+        return null;
+      }
 
-    return Geolocator.getCurrentPosition(
-      desiredAccuracy: LocationAccuracy.high,
-      timeLimit: _locationTimeout,
-    );
+      return await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+        timeLimit: _locationTimeout,
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('Error getting current location: $e');
+      }
+      return null;
+    }
   }
 
   Future<String?> getAddressFromCoordinates(double lat, double lng) async {
@@ -90,24 +114,27 @@ class LocationService {
     }
   }
 
-  Future<void> saveLocationToSupabase(Position position) async {
+  Future<String?> saveLocationToSupabase(Position position) async {
     final client = _safeSupabaseClient;
-    if (client == null) return;
+    if (client == null) return null;
 
     final user = client.auth.currentUser;
-    if (user == null) return;
+    if (user == null) return null;
 
     try {
-      await client.from('user_locations').upsert({
+      final response = await client.from('user_locations').upsert({
         'user_id': user.id,
         'latitude': position.latitude,
         'longitude': position.longitude,
         'updated_at': DateTime.now().toIso8601String(),
-      });
+      }).select('id').single();
+
+      return response['id'] as String?;
     } catch (e) {
       if (kDebugMode) {
         debugPrint('Error saving location to Supabase: $e');
       }
+      return null;
     }
   }
 
@@ -116,28 +143,42 @@ class LocationService {
   /// Used by HomeScreen and others: get current position + address.
   /// Tries to save to Supabase, but failures are swallowed.
   Future<Map<String, dynamic>?> fetchAndSaveLocation() async {
-    final position = await getCurrentLocation();
-    final address =
-        await getAddressFromCoordinates(position.latitude, position.longitude);
-
-    // Try to persist, but never let errors crash the UI.
     try {
-      await saveLocationToSupabase(position);
+      final position = await getCurrentLocation();
+      if (position == null) {
+        if (kDebugMode) {
+          debugPrint('Could not get current location');
+        }
+        return null;
+      }
+
+      final address =
+          await getAddressFromCoordinates(position.latitude, position.longitude);
+
+      // Try to persist, but never let errors crash the UI.
+      try {
+        await saveLocationToSupabase(position);
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('Non-fatal error saving location to Supabase: $e');
+        }
+      }
+
+      return {
+        'latitude': position.latitude,
+        'longitude': position.longitude,
+        'address': address,
+        'timezone': await getTimezone(
+          position.latitude,
+          position.longitude,
+        ),
+      };
     } catch (e) {
       if (kDebugMode) {
-        debugPrint('Non-fatal error in fetchAndSaveLocation: $e');
+        debugPrint('Error in fetchAndSaveLocation: $e');
       }
+      return null;
     }
-
-    return {
-      'latitude': position.latitude,
-      'longitude': position.longitude,
-      'address': address,
-      'timezone': await getTimezone(
-        position.latitude,
-        position.longitude,
-      ),
-    };
   }
 
   /// Stub for existing callers expecting this method.
