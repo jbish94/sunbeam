@@ -284,7 +284,7 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
     });
 
     try {
-      final locationService = LocationService();
+      final locationService = LocationService.instance;
 
       if (!await locationService.isLocationServiceEnabled()) {
         _showToast(

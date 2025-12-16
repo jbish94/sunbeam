@@ -33,13 +33,15 @@ class SessionService {
 
       final position = await locationService.getCurrentLocation();
       if (position == null) {
-        throw Exception('Could not get current location');
+        print('Could not get current location for session start');
+        return null;
       }
 
       // Save current location
       final locationId = await locationService.saveLocationToSupabase(position);
       if (locationId == null) {
-        throw Exception('Could not save location');
+        print('Could not save location to Supabase for session start');
+        return null;
       }
 
       // Get current weather data
