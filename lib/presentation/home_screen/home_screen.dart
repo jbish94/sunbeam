@@ -499,15 +499,15 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   int _getCurrentProgress(String goalType) {
     switch (goalType) {
       case 'sessions_per_day':
-        return currentProgress['sessions_today'] as int;
+        return (currentProgress['sessions_today'] as int?) ?? 0;
       case 'minutes_per_session':
-        final sessionsToday = currentProgress['sessions_today'] as int;
-        final minutesToday = currentProgress['minutes_today'] as int;
+        final sessionsToday = (currentProgress['sessions_today'] as int?) ?? 0;
+        final minutesToday = (currentProgress['minutes_today'] as int?) ?? 0;
         return sessionsToday > 0 ? (minutesToday / sessionsToday).round() : 0;
       case 'sessions_per_week':
-        return currentProgress['sessions_this_week'] as int;
+        return (currentProgress['sessions_this_week'] as int?) ?? 0;
       case 'total_minutes_per_week':
-        return currentProgress['minutes_this_week'] as int;
+        return (currentProgress['minutes_this_week'] as int?) ?? 0;
       default:
         return 0;
     }

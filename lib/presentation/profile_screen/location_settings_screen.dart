@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -341,7 +342,7 @@ class _LocationSettingsScreenState extends State<LocationSettingsScreen> {
         _showToast('Unable to get location address. Please try again.');
       }
     } catch (e) {
-      print('Error refreshing location: $e');
+      debugPrint('Error refreshing location: $e');
       _showToast(
           'Error getting location. Please check your connection and try again.');
     } finally {

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../services/supabase_service.dart';
 import '../services/location_service.dart';
@@ -43,7 +44,7 @@ class WeatherService {
       final url = Uri.parse(
           '$_baseUrl/weather?lat=$latitude&lon=$longitude&appid=$_apiKey&units=metric');
 
-      final response = await http.get(url);
+      final response = await http.get(url).timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
@@ -54,11 +55,11 @@ class WeatherService {
 
         return weatherData;
       } else {
-        print('Weather API error: ${response.statusCode} - ${response.body}');
+        debugPrint('Weather API error: ${response.statusCode} - ${response.body}');
         return null;
       }
     } catch (e) {
-      print('Error fetching weather data: $e');
+      debugPrint('Error fetching weather data: $e');
       return null;
     }
   }
@@ -70,17 +71,17 @@ class WeatherService {
       final url = Uri.parse(
           '$_baseUrl/uvi?lat=$latitude&lon=$longitude&appid=$_apiKey');
 
-      final response = await http.get(url);
+      final response = await http.get(url).timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         return (data['value'] as num?)?.toDouble();
       } else {
-        print('UV Index API error: ${response.statusCode} - ${response.body}');
+        debugPrint('UV Index API error: ${response.statusCode} - ${response.body}');
         return null;
       }
     } catch (e) {
-      print('Error fetching UV index: $e');
+      debugPrint('Error fetching UV index: $e');
       return null;
     }
   }
@@ -93,7 +94,7 @@ class WeatherService {
       final url = Uri.parse(
           '$_baseUrl/forecast?lat=$latitude&lon=$longitude&appid=$_apiKey&units=metric');
 
-      final response = await http.get(url);
+      final response = await http.get(url).timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
@@ -101,11 +102,11 @@ class WeatherService {
 
         return forecasts.map((item) => _parseWeatherData(item)).toList();
       } else {
-        print('Forecast API error: ${response.statusCode} - ${response.body}');
+        debugPrint('Forecast API error: ${response.statusCode} - ${response.body}');
         return null;
       }
     } catch (e) {
-      print('Error fetching weather forecast: $e');
+      debugPrint('Error fetching weather forecast: $e');
       return null;
     }
   }
@@ -152,7 +153,7 @@ class WeatherService {
 
       return weatherData;
     } catch (e) {
-      print('Error getting complete weather data: $e');
+      debugPrint('Error getting complete weather data: $e');
       return null;
     }
   }
@@ -196,7 +197,7 @@ class WeatherService {
 
       return response['id'] as String;
     } catch (e) {
-      print('Error saving weather data to Supabase: $e');
+      debugPrint('Error saving weather data to Supabase: $e');
       return null;
     }
   }
@@ -206,7 +207,7 @@ class WeatherService {
       final locationService = LocationService.instance;
       final position = await locationService.getCurrentLocation();
       if (position == null) {
-        print('Could not get current location');
+        debugPrint('Could not get current location');
         return null;
       }
 
@@ -215,7 +216,7 @@ class WeatherService {
 
       return await getCompleteWeatherData(lat, lng);
     } catch (e) {
-      print('Error getting weather for current location: $e');
+      debugPrint('Error getting weather for current location: $e');
       return null;
     }
   }
@@ -226,7 +227,7 @@ class WeatherService {
 
       final position = await locationService.getCurrentLocation();
       if (position == null) {
-        print('Could not get current location');
+        debugPrint('Could not get current location');
         return null;
       }
 
@@ -245,7 +246,7 @@ class WeatherService {
 
       return weatherData;
     } catch (e) {
-      print('Error updating and saving weather data: $e');
+      debugPrint('Error updating and saving weather data: $e');
       return null;
     }
   }
@@ -270,7 +271,7 @@ class WeatherService {
         return response.first;
       }
     } catch (e) {
-      print('Error getting latest weather from Supabase: $e');
+      debugPrint('Error getting latest weather from Supabase: $e');
     }
     return null;
   }
