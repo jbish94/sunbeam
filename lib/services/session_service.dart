@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import '../services/supabase_service.dart';
 import '../services/location_service.dart';
 import '../services/weather_service.dart';
@@ -33,14 +34,14 @@ class SessionService {
 
       final position = await locationService.getCurrentLocation();
       if (position == null) {
-        print('Could not get current location for session start');
+        debugPrint('Could not get current location for session start');
         return null;
       }
 
       // Save current location
       final locationId = await locationService.saveLocationToSupabase(position);
       if (locationId == null) {
-        print('Could not save location to Supabase for session start');
+        debugPrint('Could not save location to Supabase for session start');
         return null;
       }
 
@@ -83,7 +84,7 @@ class SessionService {
 
       return _currentSessionId;
     } catch (e) {
-      print('Error starting session: $e');
+      debugPrint('Error starting session: $e');
       return null;
     }
   }
@@ -151,7 +152,7 @@ class SessionService {
 
       return true;
     } catch (e) {
-      print('Error ending session: $e');
+      debugPrint('Error ending session: $e');
       return false;
     }
   }
@@ -171,7 +172,7 @@ class SessionService {
 
       return true;
     } catch (e) {
-      print('Error pausing session: $e');
+      debugPrint('Error pausing session: $e');
       return false;
     }
   }
@@ -191,7 +192,7 @@ class SessionService {
 
       return true;
     } catch (e) {
-      print('Error resuming session: $e');
+      debugPrint('Error resuming session: $e');
       return false;
     }
   }
@@ -214,7 +215,7 @@ class SessionService {
 
       return true;
     } catch (e) {
-      print('Error cancelling session: $e');
+      debugPrint('Error cancelling session: $e');
       return false;
     }
   }
@@ -242,7 +243,7 @@ class SessionService {
         return session;
       }
     } catch (e) {
-      print('Error getting current session: $e');
+      debugPrint('Error getting current session: $e');
     }
     return null;
   }
@@ -279,7 +280,7 @@ class SessionService {
       final response = await query;
       return List<Map<String, dynamic>>.from(response);
     } catch (e) {
-      print('Error getting session history: $e');
+      debugPrint('Error getting session history: $e');
       return [];
     }
   }
@@ -338,7 +339,7 @@ class SessionService {
             totalSessions > 0 ? energyImprovements / totalSessions : 0,
       };
     } catch (e) {
-      print('Error getting session stats: $e');
+      debugPrint('Error getting session stats: $e');
       return {};
     }
   }
@@ -366,8 +367,51 @@ class SessionService {
 
       return true;
     } catch (e) {
-      print('Error updating session notes: $e');
+      debugPrint('Error updating session notes: $e');
       return false;
+    }
+  }
+
+  /// Log a manually-entered past session (used by LogSessionScreen).
+  /// Unlike startSession/endSession, this inserts the completed record in one go.
+  Future<String?> logSession({
+    required DateTime startTime,
+    required int durationMinutes,
+    required List<String> protectionUsed,
+    int? moodBefore,
+    int? energyBefore,
+    String? notes,
+  }) async {
+    try {
+      final client = SupabaseService.instance.client;
+      final user = client.auth.currentUser;
+
+      if (user == null) {
+        throw Exception('User not authenticated');
+      }
+
+      final endTime = startTime.add(Duration(minutes: durationMinutes));
+
+      final response = await client
+          .from('sun_sessions')
+          .insert({
+            'user_id': user.id,
+            'start_time': startTime.toIso8601String(),
+            'end_time': endTime.toIso8601String(),
+            'duration_minutes': durationMinutes,
+            'protection_used': protectionUsed,
+            'mood_before': moodBefore,
+            'energy_before': energyBefore,
+            'notes': notes?.isNotEmpty == true ? notes : null,
+            'status': 'completed',
+          })
+          .select('id')
+          .single();
+
+      return response['id'] as String?;
+    } catch (e) {
+      debugPrint('Error logging session: $e');
+      return null;
     }
   }
 

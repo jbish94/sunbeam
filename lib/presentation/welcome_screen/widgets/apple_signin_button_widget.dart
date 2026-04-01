@@ -1,5 +1,7 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../core/app_export.dart';
 import '../../../theme/app_theme.dart';
@@ -22,47 +24,50 @@ class _AppleSigninButtonWidgetState extends State<AppleSigninButtonWidget> {
 
   void _handleAppleSignIn() async {
     if (_isSigningIn) return;
-
-    setState(() {
-      _isSigningIn = true;
-    });
+    setState(() => _isSigningIn = true);
 
     try {
-      // TODO: Implement actual Apple Sign In functionality
-      // For now, this is just UI implementation
+      // On mobile the OAuth callback is handled via the deep-link URL scheme
+      // configured in ios/Runner/Info.plist (CFBundleURLSchemes).
+      // On web, Supabase handles the redirect automatically.
+      // Prerequisites:
+      //   1. Supabase Dashboard → Auth → Providers → Apple → enabled
+      //   2. Apple Developer: App ID with "Sign In with Apple" capability
+      //   3. Apple Developer: Services ID + domain/redirect URL registered
+      //   4. iOS Info.plist: add URL scheme matching your Supabase callback URL
+      const redirectUrl = kIsWeb
+          ? null
+          : 'io.supabase.sunbeam://login-callback/';
 
-      // Simulate sign in process
-      await Future.delayed(Duration(seconds: 2));
+      await Supabase.instance.client.auth.signInWithOAuth(
+        OAuthProvider.apple,
+        redirectTo: redirectUrl,
+        authScreenLaunchMode: LaunchMode.externalApplication,
+      );
 
+      // The auth state change is handled by Supabase's deep-link listener.
+      // onSignInSuccess will be called by the auth state listener in main/welcome.
+      if (mounted) widget.onSignInSuccess();
+    } on AuthException catch (e) {
       if (mounted) {
-        // Show success message
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-                'Apple Sign In functionality will be implemented with backend integration'),
-            backgroundColor: AppTheme.lightTheme.colorScheme.primary,
-            duration: Duration(seconds: 3),
+            content: Text(e.message),
+            backgroundColor: AppTheme.lightTheme.colorScheme.error,
           ),
         );
-
-        // For now, proceed to onboarding
-        widget.onSignInSuccess();
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Registration failed. Please try again.'),
+            content: const Text('Sign in failed. Please try again.'),
             backgroundColor: AppTheme.lightTheme.colorScheme.error,
           ),
         );
       }
     } finally {
-      if (mounted) {
-        setState(() {
-          _isSigningIn = false;
-        });
-      }
+      if (mounted) setState(() => _isSigningIn = false);
     }
   }
 

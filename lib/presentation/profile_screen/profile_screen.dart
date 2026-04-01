@@ -68,8 +68,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _optimalWindowAlerts = true;
   bool _missedSessionReminders = true;
   bool _educationalContent = false;
-  bool _appleHealthSync = true;
-  bool _googleFitSync = false;
 
   @override
   void initState() {
@@ -116,7 +114,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _loadLocationFromSupabase();
       }
     } catch (e) {
-      print('Error loading user data: $e');
+      debugPrint('Error loading user data: $e');
     }
   }
 
@@ -132,7 +130,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         });
       }
     } catch (e) {
-      print('Error loading location from Supabase: $e');
+      debugPrint('Error loading location from Supabase: $e');
     }
   }
 
@@ -317,41 +315,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ],
             ),
 
-            SizedBox(height: 2.h),
-
-            // Integration Settings Section - HIDDEN
-            // SettingsSectionWidget(
-            //   title: 'Health Integrations',
-            //   children: [
-            //     ToggleItemWidget(
-            //       iconName: 'favorite',
-            //       title: 'Apple Health',
-            //       subtitle: 'Sync sun exposure data with Apple HealthKit',
-            //       value: _appleHealthSync,
-            //       onChanged: (value) {
-            //         setState(() {
-            //           _appleHealthSync = value;
-            //         });
-            //         _showToast(
-            //             'Apple Health sync ${value ? 'enabled' : 'disabled'}');
-            //       },
-            //     ),
-            //     ToggleItemWidget(
-            //       iconName: 'fitness_center',
-            //       title: 'Google Fit',
-            //       subtitle:
-            //           'Connect with Google Fit for comprehensive health tracking',
-            //       value: _googleFitSync,
-            //       onChanged: (value) {
-            //         setState(() {
-            //           _googleFitSync = value;
-            //         });
-            //         _showToast(
-            //             'Google Fit sync ${value ? 'enabled' : 'disabled'}');
-            //       },
-            //     ),
-            //   ],
-            // ),
             SizedBox(height: 2.h),
 
             // SUBSCRIPTION STATUS - HIDDEN BUT PRESERVED
@@ -661,14 +624,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
       ),
     );
-  }
-
-  void _editLocation() {
-    _editLocationSettings();
-  }
-
-  void _editTimezone() {
-    _editLocationSettings();
   }
 
   void _editGoals() {
