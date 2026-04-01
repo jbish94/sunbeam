@@ -372,6 +372,49 @@ class SessionService {
     }
   }
 
+  /// Log a manually-entered past session (used by LogSessionScreen).
+  /// Unlike startSession/endSession, this inserts the completed record in one go.
+  Future<String?> logSession({
+    required DateTime startTime,
+    required int durationMinutes,
+    required List<String> protectionUsed,
+    int? moodBefore,
+    int? energyBefore,
+    String? notes,
+  }) async {
+    try {
+      final client = SupabaseService.instance.client;
+      final user = client.auth.currentUser;
+
+      if (user == null) {
+        throw Exception('User not authenticated');
+      }
+
+      final endTime = startTime.add(Duration(minutes: durationMinutes));
+
+      final response = await client
+          .from('sun_sessions')
+          .insert({
+            'user_id': user.id,
+            'start_time': startTime.toIso8601String(),
+            'end_time': endTime.toIso8601String(),
+            'duration_minutes': durationMinutes,
+            'protection_used': protectionUsed,
+            'mood_before': moodBefore,
+            'energy_before': energyBefore,
+            'notes': notes?.isNotEmpty == true ? notes : null,
+            'status': 'completed',
+          })
+          .select('id')
+          .single();
+
+      return response['id'] as String?;
+    } catch (e) {
+      debugPrint('Error logging session: $e');
+      return null;
+    }
+  }
+
   /// Clear current session data
   void _clearSessionData() {
     _currentSessionId = null;
