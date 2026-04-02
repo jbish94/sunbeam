@@ -1,12 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/app_export.dart';
-import './widgets/burn_history_widget.dart';
-import './widgets/demographics_widget.dart';
 import './widgets/goal_selection_widget.dart';
-import './widgets/location_permission_widget.dart';
 import './widgets/progress_indicator_widget.dart';
 import './widgets/skin_type_selector_widget.dart';
 
@@ -20,17 +17,11 @@ class OnboardingFlow extends StatefulWidget {
 class _OnboardingFlowState extends State<OnboardingFlow> {
   final PageController _pageController = PageController();
   int _currentStep = 1;
-  final int _totalSteps = 5;
+  final int _totalSteps = 2;
 
   // Onboarding data
   List<String> _selectedGoals = [];
   String? _selectedSkinType;
-  bool _hasBurnHistory = false;
-  double _sensitivity = 5.0;
-  String? _selectedAgeRange;
-  String? _selectedBMIRange;
-  bool _hasLocationPermission = false;
-  String? _manualLocation;
 
   bool get _canProceedFromCurrentStep {
     switch (_currentStep) {
@@ -38,13 +29,6 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         return _selectedGoals.isNotEmpty;
       case 2:
         return _selectedSkinType != null;
-      case 3:
-        return true; // Burn history and sensitivity always have default values
-      case 4:
-        return true; // Demographics are optional
-      case 5:
-        return _hasLocationPermission ||
-            (_manualLocation != null && _manualLocation!.isNotEmpty);
       default:
         return false;
     }
@@ -77,30 +61,69 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
   }
 
   void _completeOnboarding() async {
+    final client = Supabase.instance.client;
+    final user = client.auth.currentUser;
+
     try {
-      // Save onboarding completion status
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('has_completed_onboarding', true);
+      if (user != null) {
+        // Persist skin type to user_profiles
+        final skinTypeInt = _skinTypeToInt(_selectedSkinType);
+        await client.from('user_profiles').update({
+          'skin_type': skinTypeInt,
+          'preferences': {'onboarding_completed': true},
+        }).eq('id', user.id);
 
-      // Save onboarding data (in a real app, this would be saved to backend)
-      await prefs.setStringList('selected_goals', _selectedGoals);
-      await prefs.setString('selected_skin_type', _selectedSkinType ?? '');
-      await prefs.setBool('has_burn_history', _hasBurnHistory);
-      await prefs.setDouble('sensitivity', _sensitivity);
-      await prefs.setString('selected_age_range', _selectedAgeRange ?? '');
-      await prefs.setString('selected_bmi_range', _selectedBMIRange ?? '');
-      await prefs.setBool('has_location_permission', _hasLocationPermission);
-      await prefs.setString('manual_location', _manualLocation ?? '');
-
-      // Navigate to home screen
-      if (mounted) {
-        Navigator.pushReplacementNamed(context, AppRoutes.home);
+        // Persist selected goals to user_goals (upsert in case row exists)
+        await client.from('user_goals').upsert({
+          'user_id': user.id,
+          'primary_goal_type': _selectedGoals.isNotEmpty
+              ? _goalLabelToType(_selectedGoals.first)
+              : 'sessions_per_day',
+          'enable_secondary_goal': _selectedGoals.length > 1,
+          'secondary_goal_type': _selectedGoals.length > 1
+              ? _goalLabelToType(_selectedGoals[1])
+              : null,
+        });
       }
     } catch (e) {
-      // If error saving, still navigate to home
-      if (mounted) {
-        Navigator.pushReplacementNamed(context, AppRoutes.home);
-      }
+      debugPrint('[Onboarding] Supabase sync error: $e');
+      // Non-fatal — still navigate to home
+    }
+
+    if (mounted) {
+      Navigator.pushReplacementNamed(context, AppRoutes.home);
+    }
+  }
+
+  int _skinTypeToInt(String? roman) {
+    switch (roman) {
+      case 'I':
+        return 1;
+      case 'II':
+        return 2;
+      case 'III':
+        return 3;
+      case 'IV':
+        return 4;
+      case 'V':
+        return 5;
+      case 'VI':
+        return 6;
+      default:
+        return 2;
+    }
+  }
+
+  String _goalLabelToType(String label) {
+    switch (label) {
+      case 'Vitamin D Optimization':
+        return 'sessions_per_day';
+      case 'Mood Enhancement':
+        return 'minutes_per_session';
+      case 'Better Sleep':
+        return 'sessions_per_week';
+      default:
+        return 'sessions_per_day';
     }
   }
 
@@ -128,9 +151,6 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
                 children: [
                   _buildGoalSelectionStep(),
                   _buildSkinTypeStep(),
-                  _buildBurnHistoryStep(),
-                  _buildDemographicsStep(),
-                  _buildLocationPermissionStep(),
                 ],
               ),
             ),
@@ -163,54 +183,6 @@ class _OnboardingFlowState extends State<OnboardingFlow> {
         onSkinTypeChanged: (skinType) {
           setState(() {
             _selectedSkinType = skinType;
-          });
-        },
-      ),
-    );
-  }
-
-  Widget _buildBurnHistoryStep() {
-    return SingleChildScrollView(
-      padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 2.h),
-      child: BurnHistoryWidget(
-        hasBurnHistory: _hasBurnHistory,
-        sensitivity: _sensitivity,
-        onDataChanged: (burnHistory, sensitivity) {
-          setState(() {
-            _hasBurnHistory = burnHistory;
-            _sensitivity = sensitivity;
-          });
-        },
-      ),
-    );
-  }
-
-  Widget _buildDemographicsStep() {
-    return SingleChildScrollView(
-      padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 2.h),
-      child: DemographicsWidget(
-        selectedAgeRange: _selectedAgeRange,
-        selectedBMIRange: _selectedBMIRange,
-        onDataChanged: (ageRange, bmiRange) {
-          setState(() {
-            _selectedAgeRange = ageRange;
-            _selectedBMIRange = bmiRange;
-          });
-        },
-      ),
-    );
-  }
-
-  Widget _buildLocationPermissionStep() {
-    return SingleChildScrollView(
-      padding: EdgeInsets.symmetric(horizontal: 4.w, vertical: 2.h),
-      child: LocationPermissionWidget(
-        hasLocationPermission: _hasLocationPermission,
-        manualLocation: _manualLocation,
-        onPermissionChanged: (hasPermission, location) {
-          setState(() {
-            _hasLocationPermission = hasPermission;
-            _manualLocation = location;
           });
         },
       ),
