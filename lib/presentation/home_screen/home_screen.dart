@@ -51,16 +51,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     'minutes_this_week': 0,
   };
 
-  final List<Map<String, dynamic>> hourlyUvData = [
-    {"time": "6AM", "uvIndex": 1, "temp": 65},
-    {"time": "8AM", "uvIndex": 3, "temp": 68},
-    {"time": "10AM", "uvIndex": 6, "temp": 72},
-    {"time": "12PM", "uvIndex": 9, "temp": 78},
-    {"time": "2PM", "uvIndex": 11, "temp": 82},
-    {"time": "4PM", "uvIndex": 8, "temp": 80},
-    {"time": "6PM", "uvIndex": 5, "temp": 76},
-    {"time": "8PM", "uvIndex": 2, "temp": 72},
-  ];
+  List<Map<String, dynamic>> _hourlyUvData = [];
+  Map<String, dynamic>? _sunWindow;
 
   Map<String, dynamic> _currentWeatherData = {
     'temperature': 78.0, // can be double; we’ll round when using
@@ -187,8 +179,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         });
 
         debugPrint('📍 [HomeScreen] Fetching weather data...');
-        final weatherData =
-            await _weatherService.getCompleteWeatherData(lat, lng);
+        final results = await Future.wait([
+          _weatherService.getCompleteWeatherData(lat, lng),
+          _weatherService.getHourlyUvForecast(lat, lng),
+        ]);
+
+        final weatherData = results[0] as Map<String, dynamic>?;
+        final hourlyData =
+            results[1] as List<Map<String, dynamic>>?;
 
         if (weatherData != null) {
           debugPrint('📍 [HomeScreen] Weather data received successfully');
@@ -209,6 +207,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           });
         } else {
           debugPrint('⚠️ [HomeScreen] Weather data is null');
+        }
+
+        if (hourlyData != null && hourlyData.isNotEmpty) {
+          debugPrint(
+              '📍 [HomeScreen] Hourly UV data: ${hourlyData.length} points');
+          setState(() {
+            _hourlyUvData = hourlyData;
+            _sunWindow = _computeSunWindow(hourlyData);
+          });
+        } else {
+          debugPrint('⚠️ [HomeScreen] Hourly UV data unavailable');
         }
       } else {
         // Location fetch failed - update UI with appropriate message
@@ -289,7 +298,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     SizedBox(height: 2.h),
                     _buildDynamicSunWindowCard(),
                     SizedBox(height: 1.h),
-                    HourlyUvChartWidget(hourlyData: hourlyUvData),
+                    HourlyUvChartWidget(
+                      hourlyData: _hourlyUvData.isNotEmpty
+                          ? _hourlyUvData
+                          : _placeholderUvData(),
+                    ),
                     SizedBox(height: 1.h),
                     if (_isLoadingWeather)
                       Center(
@@ -598,12 +611,79 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildDynamicSunWindowCard() => const SunWindowCardWidget(
-        startTime: '4 PM',
-        endTime: '5:30 PM',
-        recommendedMinutes: 15,
-        countdownText: '3h 15m',
+  Widget _buildDynamicSunWindowCard() {
+    final w = _sunWindow;
+    if (w == null) {
+      // No optimal window found today — show a "no window" placeholder
+      return Container(
+        width: double.infinity,
+        margin: EdgeInsets.symmetric(horizontal: 4.w, vertical: 2.h),
+        padding: EdgeInsets.all(4.w),
+        decoration: BoxDecoration(
+          color: AppTheme.lightTheme.cardColor,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            CustomIconWidget(
+              iconName: 'cloud',
+              color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+              size: 7.w,
+            ),
+            SizedBox(width: 3.w),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'No Optimal Window Today',
+                    style: AppTheme.lightTheme.textTheme.titleSmall
+                        ?.copyWith(fontWeight: FontWeight.w600),
+                  ),
+                  SizedBox(height: 0.5.h),
+                  Text(
+                    _isLoadingWeather
+                        ? 'Loading forecast…'
+                        : 'UV levels aren\'t in the optimal 3–7 range today.',
+                    style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+                      color:
+                          AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       );
+    }
+
+    return SunWindowCardWidget(
+      startTime: w['startTime'] as String,
+      endTime: w['endTime'] as String,
+      recommendedMinutes: w['recommendedMinutes'] as int,
+      countdownText: w['countdownText'] as String,
+    );
+  }
+
+  /// Minimal placeholder while live UV data is loading so the chart
+  /// doesn't render with zero data points.
+  List<Map<String, dynamic>> _placeholderUvData() {
+    return [
+      {'time': '6AM', 'uvIndex': 0, 'temp': 65},
+      {'time': '9AM', 'uvIndex': 0, 'temp': 68},
+      {'time': '12PM', 'uvIndex': 0, 'temp': 72},
+      {'time': '3PM', 'uvIndex': 0, 'temp': 70},
+      {'time': '6PM', 'uvIndex': 0, 'temp': 66},
+    ];
+  }
 
   Widget _buildDynamicSafetyRecommendations() =>
       const SafetyRecommendationsWidget(
@@ -753,6 +833,57 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       ),
       label: label,
     );
+  }
+
+  /// Finds the first upcoming block of hours where UV is 3–7 (optimal for
+  /// vitamin D synthesis without high burn risk).
+  Map<String, dynamic>? _computeSunWindow(
+      List<Map<String, dynamic>> hourly) {
+    if (hourly.isEmpty) return null;
+
+    final now = DateTime.now();
+    Map<String, dynamic>? windowStart;
+    Map<String, dynamic>? windowEnd;
+
+    for (final h in hourly) {
+      final dt = h['dt'] as DateTime;
+      // Skip hours more than 1h in the past
+      if (dt.isBefore(now.subtract(const Duration(hours: 1)))) continue;
+
+      final uv = (h['uvIndex'] as num).toDouble();
+      if (uv >= 3.0 && uv <= 7.0) {
+        windowStart ??= h;
+        windowEnd = h;
+      } else if (windowStart != null) {
+        break; // first contiguous window found
+      }
+    }
+
+    if (windowStart == null) return null;
+
+    final startDt = windowStart['dt'] as DateTime;
+    final uvAvg =
+        ((windowStart['uvIndex'] as num).toDouble() +
+                ((windowEnd ?? windowStart)['uvIndex'] as num).toDouble()) /
+            2;
+    final recommendedMins = uvAvg <= 4.0 ? 30 : uvAvg <= 6.0 ? 20 : 15;
+    final countdown = startDt.isAfter(now)
+        ? _formatCountdown(startDt.difference(now))
+        : 'Now';
+
+    return {
+      'startTime': windowStart['time'] as String,
+      'endTime': (windowEnd ?? windowStart)['time'] as String,
+      'recommendedMinutes': recommendedMins,
+      'countdownText': countdown,
+    };
+  }
+
+  String _formatCountdown(Duration d) {
+    if (d.inHours >= 1) {
+      return '${d.inHours}h ${d.inMinutes.remainder(60)}m';
+    }
+    return '${d.inMinutes}m';
   }
 
   String _getGreeting() {

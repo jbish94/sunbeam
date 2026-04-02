@@ -142,6 +142,67 @@ class WeatherService {
     };
   }
 
+  /// Returns today's hourly UV + temperature data using the One Call 2.5 API.
+  /// Each entry has: `dt` (DateTime), `time` (String e.g. "2PM"),
+  /// `uvIndex` (double), `temp` (int, °F).
+  /// Returns null if the API key doesn't support One Call or on any error.
+  Future<List<Map<String, dynamic>>?> getHourlyUvForecast(
+      double latitude, double longitude) async {
+    try {
+      _validateApiKey();
+
+      final url = Uri.parse(
+        'https://api.openweathermap.org/data/2.5/onecall'
+        '?lat=$latitude&lon=$longitude&appid=$_apiKey'
+        '&units=metric&exclude=minutely,daily,alerts',
+      );
+
+      final response =
+          await http.get(url).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body) as Map<String, dynamic>;
+        final hourly = data['hourly'] as List? ?? [];
+
+        final now = DateTime.now();
+        final todayEnd =
+            DateTime(now.year, now.month, now.day, 23, 59, 59);
+
+        final result = <Map<String, dynamic>>[];
+        for (final h in hourly) {
+          final dt = DateTime.fromMillisecondsSinceEpoch(
+              (h['dt'] as int) * 1000);
+          if (dt.isBefore(DateTime(now.year, now.month, now.day)) ||
+              dt.isAfter(todayEnd)) continue;
+
+          final tempC = (h['temp'] as num?)?.toDouble() ?? 0.0;
+          result.add({
+            'dt': dt,
+            'time': _formatHour(dt),
+            'uvIndex': (h['uvi'] as num?)?.toDouble() ?? 0.0,
+            'temp': tempC * 9 / 5 + 32, // convert to °F for chart tooltip
+          });
+        }
+        return result;
+      } else {
+        debugPrint(
+            '[WeatherService] One Call API returned ${response.statusCode}');
+        return null;
+      }
+    } catch (e) {
+      debugPrint('[WeatherService] getHourlyUvForecast error: $e');
+      return null;
+    }
+  }
+
+  String _formatHour(DateTime dt) {
+    final h = dt.hour;
+    if (h == 0) return '12AM';
+    if (h < 12) return '${h}AM';
+    if (h == 12) return '12PM';
+    return '${h - 12}PM';
+  }
+
   Future<Map<String, dynamic>?> getCompleteWeatherData(
       double latitude, double longitude) async {
     try {
