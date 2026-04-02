@@ -153,6 +153,37 @@ class WeatherService {
     };
   }
 
+  /// Reverse-geocodes coordinates using the OpenWeather Geo API.
+  /// Returns "City, State" (US) or "City, Country" (elsewhere).
+  /// Works on web — pure HTTP, no platform channels.
+  Future<String?> getLocationName(double lat, double lng) async {
+    try {
+      _validateApiKey();
+      final url = Uri.parse(
+        'https://api.openweathermap.org/geo/1.0/reverse'
+        '?lat=$lat&lon=$lng&limit=1&appid=$_apiKey',
+      );
+      final response =
+          await http.get(url).timeout(const Duration(seconds: 8));
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body) as List;
+        if (data.isEmpty) return null;
+        final place = data.first as Map<String, dynamic>;
+        final city = place['name'] as String?;
+        final state = place['state'] as String?;
+        final country = place['country'] as String?;
+        if (city != null && state != null) return '$city, $state';
+        if (city != null && country != null) return '$city, $country';
+        return city;
+      }
+      debugPrint('[WeatherService] Geo API: ${response.statusCode}');
+      return null;
+    } catch (e) {
+      debugPrint('[WeatherService] getLocationName error: $e');
+      return null;
+    }
+  }
+
   /// Returns today's hourly UV + temperature data using the One Call 2.5 API.
   /// Each entry has: `dt` (DateTime), `time` (String e.g. "2PM"),
   /// `uvIndex` (double), `temp` (int, °F).

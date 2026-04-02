@@ -177,35 +177,32 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         final results = await Future.wait([
           _weatherService.getCompleteWeatherData(lat, lng),
           _weatherService.getHourlyUvForecast(lat, lng),
+          _weatherService.getLocationName(lat, lng),
         ]);
 
         final weatherData = results[0] as Map<String, dynamic>?;
         final hourlyData = results[1] as List<Map<String, dynamic>>?;
+        final geoApiName = results[2] as String?;
 
-        // Resolve display location: geocoding → OpenWeather city → coordinates
+        // Resolve display location priority:
+        // 1. Mobile geocoding (city + state via device)
+        // 2. OpenWeather Geo API (city + state, works on web)
+        // 3. OpenWeather current weather city field (city + country code)
+        // 4. Raw coordinates — absolute last resort
         final geoAddress = locationData['address'] as String?;
         final cityAddress = weatherData?['city_address'] as String?;
         final displayLocation = (geoAddress?.isNotEmpty == true)
             ? geoAddress!
-            : (cityAddress?.isNotEmpty == true)
-                ? cityAddress!
-                : '${lat.toStringAsFixed(3)}, ${lng.toStringAsFixed(3)}';
+            : (geoApiName?.isNotEmpty == true)
+                ? geoApiName!
+                : (cityAddress?.isNotEmpty == true)
+                    ? cityAddress!
+                    : '${lat.toStringAsFixed(3)}, ${lng.toStringAsFixed(3)}';
 
         setState(() => _currentLocation = displayLocation);
 
         if (weatherData != null) {
           debugPrint('📍 [HomeScreen] Weather data received successfully');
-
-          // If geocoding returned null (common on web), fall back to the
-          // city name embedded in the OpenWeather response.
-          final geoAddress = locationData['address'] as String?;
-          if ((geoAddress == null || geoAddress.isEmpty) &&
-              weatherData['city_address'] != null) {
-            setState(() {
-              _currentLocation = weatherData['city_address'] as String;
-            });
-          }
-
           setState(() {
             _currentWeatherData = {
               'temperature':
