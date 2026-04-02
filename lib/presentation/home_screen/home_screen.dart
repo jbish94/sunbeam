@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sizer/sizer.dart';
@@ -30,6 +32,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   final LocationService _locationService = LocationService.instance;
   final WeatherService _weatherService = WeatherService.instance;
 
+  StreamSubscription<AuthState>? _authSubscription;
+
   Map<String, dynamic> userGoals = {
     'primary_goal_type': 'sessions_per_day',
     'enable_secondary_goal': true,
@@ -41,10 +45,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   };
 
   Map<String, dynamic> currentProgress = {
-    'sessions_today': 1,
-    'minutes_today': 15,
-    'sessions_this_week': 8,
-    'minutes_this_week': 120,
+    'sessions_today': 0,
+    'minutes_today': 0,
+    'sessions_this_week': 0,
+    'minutes_this_week': 0,
   };
 
   final List<Map<String, dynamic>> hourlyUvData = [
@@ -87,7 +91,76 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   void initState() {
     super.initState();
     _loadGoalSettings();
+    _loadSessionProgress();
     _initializeLocationAndWeather();
+
+    // React to sign-in / sign-out without requiring a restart
+    _authSubscription = Supabase.instance.client.auth.onAuthStateChange.listen(
+      (data) {
+        if (mounted) {
+          setState(() {}); // rebuild so FAB / greeting update immediately
+          _loadSessionProgress(); // refresh progress for the new user state
+        }
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _authSubscription?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadSessionProgress() async {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) {
+      if (mounted) {
+        setState(() => currentProgress = {
+          'sessions_today': 0,
+          'minutes_today': 0,
+          'sessions_this_week': 0,
+          'minutes_this_week': 0,
+        });
+      }
+      return;
+    }
+
+    try {
+      final now = DateTime.now();
+      final todayStart = DateTime(now.year, now.month, now.day);
+      final weekStart = todayStart.subtract(Duration(days: now.weekday - 1));
+
+      final sessions = await Supabase.instance.client
+          .from('sun_sessions')
+          .select('start_time, duration_minutes')
+          .eq('user_id', user.id)
+          .gte('start_time', weekStart.toIso8601String());
+
+      int sessionsToday = 0, minutesToday = 0;
+      int sessionsWeek = 0, minutesWeek = 0;
+
+      for (final s in sessions as List) {
+        final start = DateTime.parse(s['start_time'] as String);
+        final mins = (s['duration_minutes'] as int?) ?? 0;
+        sessionsWeek++;
+        minutesWeek += mins;
+        if (!start.isBefore(todayStart)) {
+          sessionsToday++;
+          minutesToday += mins;
+        }
+      }
+
+      if (mounted) {
+        setState(() => currentProgress = {
+          'sessions_today': sessionsToday,
+          'minutes_today': minutesToday,
+          'sessions_this_week': sessionsWeek,
+          'minutes_this_week': minutesWeek,
+        });
+      }
+    } catch (e) {
+      debugPrint('[HomeScreen] Failed to load session progress: $e');
+    }
   }
 
   Future<void> _initializeLocationAndWeather() async {
@@ -303,7 +376,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ),
                   SizedBox(height: 0.5.h),
                   Text(
-                    'Ready for some sunshine?',
+                    _getWelcomeSubtitle(),
                     style: AppTheme.lightTheme.textTheme.headlineSmall
                         ?.copyWith(fontWeight: FontWeight.w700),
                   ),
@@ -689,9 +762,23 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     return 'Good Evening';
   }
 
+  String _getWelcomeSubtitle() {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user != null) {
+      final name = (user.userMetadata?['full_name'] as String?)
+          ?.split(' ')
+          .first;
+      if (name != null && name.isNotEmpty) return 'Welcome back, $name!';
+    }
+    return 'Ready for some sunshine?';
+  }
+
   Future<void> _handleRefresh() async {
     setState(() => _isRefreshing = true);
-    await _updateLocationAndWeather();
+    await Future.wait([
+      _updateLocationAndWeather(),
+      _loadSessionProgress(),
+    ]);
     setState(() => _isRefreshing = false);
   }
 }

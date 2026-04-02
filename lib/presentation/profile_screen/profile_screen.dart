@@ -7,6 +7,7 @@ import 'package:fluttertoast/fluttertoast.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sizer/sizer.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:universal_html/html.dart' as html;
 
 import '../../core/app_export.dart';
@@ -77,44 +78,107 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _loadUserData() async {
     try {
+      final client = Supabase.instance.client;
+      final user = client.auth.currentUser;
+
+      if (user != null) {
+        // Name + email from auth
+        final name = (user.userMetadata?['full_name'] as String?)?.isNotEmpty == true
+            ? user.userMetadata!['full_name'] as String
+            : user.email?.split('@')[0] ?? 'User';
+
+        // Profile row for skin type and join date
+        final profile = await client
+            .from('user_profiles')
+            .select('skin_type, created_at')
+            .eq('id', user.id)
+            .maybeSingle();
+
+        // Total session count
+        final sessions = await client
+            .from('sun_sessions')
+            .select('id')
+            .eq('user_id', user.id);
+        final totalSessions = (sessions as List).length;
+
+        final skinTypeInt = (profile?['skin_type'] as int?) ?? 2;
+        final joinDate = profile?['created_at'] != null
+            ? (profile!['created_at'] as String).substring(0, 10)
+            : '2024-01-01';
+
+        if (mounted) {
+          setState(() {
+            userData['name'] = name;
+            userData['email'] = user.email ?? '';
+            userData['skinType'] = 'Type ${_skinTypeLabel(skinTypeInt)}';
+            userData['joinDate'] = joinDate;
+            userData['totalSessions'] = totalSessions;
+          });
+        }
+      }
+
+      // Supplement with SharedPreferences for location (set by LocationService)
       final prefs = await SharedPreferences.getInstance();
-
-      // Load user name and email from welcome screen
-      final savedName = prefs.getString('user_name');
-      final savedEmail = prefs.getString('user_email');
-
-      // Load location data
       final savedLocation = prefs.getString('user_location');
       final savedTimezone = prefs.getString('user_timezone');
       final savedGpsAccuracy = prefs.getString('gps_accuracy');
-      final highPrecisionGps = prefs.getBool('high_precision_gps') ?? true;
 
-      if (savedName != null || savedEmail != null || savedLocation != null) {
+      if (mounted) {
         setState(() {
-          if (savedName != null && savedName.isNotEmpty) {
-            userData["name"] = savedName;
-          }
-          if (savedEmail != null && savedEmail.isNotEmpty) {
-            userData["email"] = savedEmail;
-          }
-          if (savedLocation != null && savedLocation.isNotEmpty) {
-            userData["location"] = savedLocation;
-          }
-          if (savedTimezone != null && savedTimezone.isNotEmpty) {
-            userData["timezone"] = savedTimezone;
-          }
-          if (savedGpsAccuracy != null && savedGpsAccuracy.isNotEmpty) {
-            userData["gpsAccuracy"] = savedGpsAccuracy;
-          }
+          if (savedLocation?.isNotEmpty == true) userData['location'] = savedLocation!;
+          if (savedTimezone?.isNotEmpty == true) userData['timezone'] = savedTimezone!;
+          if (savedGpsAccuracy?.isNotEmpty == true) userData['gpsAccuracy'] = savedGpsAccuracy!;
         });
       }
 
-      // Try to get current location from Supabase if no saved location
       if (savedLocation == null || savedLocation.isEmpty) {
         _loadLocationFromSupabase();
       }
     } catch (e) {
       debugPrint('Error loading user data: $e');
+    }
+  }
+
+  String _skinTypeLabel(int type) {
+    const labels = {1: 'I', 2: 'II', 3: 'III', 4: 'IV', 5: 'V', 6: 'VI'};
+    return labels[type] ?? 'II';
+  }
+
+  Future<void> _signOut() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(
+          'Sign Out',
+          style: AppTheme.lightTheme.textTheme.titleMedium
+              ?.copyWith(fontWeight: FontWeight.w600),
+        ),
+        content: const Text('Are you sure you want to sign out?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text(
+              'Sign Out',
+              style: TextStyle(color: AppTheme.lightTheme.colorScheme.error),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    try {
+      await Supabase.instance.client.auth.signOut();
+      if (mounted) {
+        Navigator.pushReplacementNamed(context, '/home-screen');
+      }
+    } catch (e) {
+      if (mounted) _showToast('Sign out failed. Please try again.');
     }
   }
 
@@ -338,6 +402,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
               ),
               SizedBox(height: 2.h),
             ],
+
+            SizedBox(height: 2.h),
+
+            // Account Section
+            if (Supabase.instance.client.auth.currentUser != null)
+              SettingsSectionWidget(
+                title: 'Account',
+                children: [
+                  SettingsItemWidget(
+                    iconName: 'logout',
+                    title: 'Sign Out',
+                    subtitle: 'Sign out of your Sunbeam account',
+                    onTap: _signOut,
+                  ),
+                ],
+              ),
 
             SizedBox(height: 2.h),
 
