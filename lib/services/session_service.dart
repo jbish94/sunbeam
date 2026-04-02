@@ -262,22 +262,22 @@ class SessionService {
         throw Exception('User not authenticated');
       }
 
-      var query = client
+      var filterQuery = client
           .from('sun_sessions')
           .select()
-          .eq('user_id', user.id)
-          .order('start_time', ascending: false)
-          .limit(limit);
+          .eq('user_id', user.id);
 
       if (startDate != null) {
-        query = query.gte('start_time', startDate.toIso8601String());
+        filterQuery = filterQuery.gte('start_time', startDate.toIso8601String());
       }
 
       if (endDate != null) {
-        query = query.lte('start_time', endDate.toIso8601String());
+        filterQuery = filterQuery.lte('start_time', endDate.toIso8601String());
       }
 
-      final response = await query;
+      final response = await filterQuery
+          .order('start_time', ascending: false)
+          .limit(limit);
       return List<Map<String, dynamic>>.from(response);
     } catch (e) {
       debugPrint('Error getting session history: $e');

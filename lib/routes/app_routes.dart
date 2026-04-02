@@ -21,7 +21,7 @@ class AppRoutes {
   static const String notificationsScreen = '/notifications-screen';
 
   static Map<String, WidgetBuilder> routes = {
-    initial: (context) => const WelcomeScreen(),
+    initial: (context) => const HomeScreen(),
     welcomeScreen: (context) => const WelcomeScreen(),
     logSession: (context) => const LogSessionScreen(),
     onboardingFlow: (context) => const OnboardingFlow(),
