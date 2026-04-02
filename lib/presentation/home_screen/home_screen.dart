@@ -173,11 +173,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         final lng = (locationData['longitude'] as num).toDouble();
         debugPrint('📍 [HomeScreen] Coordinates: $lat, $lng');
 
-        setState(() {
-          _currentLocation = locationData['address'] ??
-              "${lat.toStringAsFixed(4)}, ${lng.toStringAsFixed(4)}";
-        });
-
         debugPrint('📍 [HomeScreen] Fetching weather data...');
         final results = await Future.wait([
           _weatherService.getCompleteWeatherData(lat, lng),
@@ -185,22 +180,21 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         ]);
 
         final weatherData = results[0] as Map<String, dynamic>?;
-        final hourlyData =
-            results[1] as List<Map<String, dynamic>>?;
+        final hourlyData = results[1] as List<Map<String, dynamic>>?;
+
+        // Resolve display location: geocoding → OpenWeather city → coordinates
+        final geoAddress = locationData['address'] as String?;
+        final cityAddress = weatherData?['city_address'] as String?;
+        final displayLocation = (geoAddress?.isNotEmpty == true)
+            ? geoAddress!
+            : (cityAddress?.isNotEmpty == true)
+                ? cityAddress!
+                : '${lat.toStringAsFixed(3)}, ${lng.toStringAsFixed(3)}';
+
+        setState(() => _currentLocation = displayLocation);
 
         if (weatherData != null) {
           debugPrint('📍 [HomeScreen] Weather data received successfully');
-
-          // If geocoding returned null (common on web), fall back to the
-          // city name embedded in the OpenWeather response.
-          final geoAddress = locationData['address'] as String?;
-          if ((geoAddress == null || geoAddress.isEmpty) &&
-              weatherData['city_address'] != null) {
-            setState(() {
-              _currentLocation = weatherData['city_address'] as String;
-            });
-          }
-
           setState(() {
             _currentWeatherData = {
               'temperature':
