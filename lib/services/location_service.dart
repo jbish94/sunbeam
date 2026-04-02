@@ -87,19 +87,25 @@ class LocationService {
   }
 
   Future<String?> getAddressFromCoordinates(double lat, double lng) async {
-    final placemarks = await placemarkFromCoordinates(lat, lng);
-    if (placemarks.isEmpty) return null;
+    try {
+      final placemarks = await placemarkFromCoordinates(lat, lng);
+      if (placemarks.isEmpty) return null;
 
-    final p = placemarks.first;
-    final parts = <String>[
-      if (p.locality != null && p.locality!.isNotEmpty) p.locality!,
-      if (p.administrativeArea != null && p.administrativeArea!.isNotEmpty)
-        p.administrativeArea!,
-      if (p.country != null && p.country!.isNotEmpty) p.country!,
-    ];
+      final p = placemarks.first;
+      final parts = <String>[
+        if (p.locality != null && p.locality!.isNotEmpty) p.locality!,
+        if (p.administrativeArea != null && p.administrativeArea!.isNotEmpty)
+          p.administrativeArea!,
+        if (p.country != null && p.country!.isNotEmpty) p.country!,
+      ];
 
-    if (parts.isEmpty) return null;
-    return parts.join(', ');
+      if (parts.isEmpty) return null;
+      return parts.join(', ');
+    } catch (e) {
+      // geocoding uses platform channels — throws MissingPluginException on web
+      if (kDebugMode) debugPrint('[LocationService] Geocoding unavailable: $e');
+      return null;
+    }
   }
 
   Future<String?> getTimezone(double lat, double lng) async {
@@ -190,8 +196,15 @@ class LocationService {
         return null;
       }
 
-      final address =
-          await getAddressFromCoordinates(position.latitude, position.longitude);
+      // Geocoding is non-fatal — it fails silently on web (platform channels
+      // are not available). GPS coordinates are still returned to the caller.
+      String? address;
+      try {
+        address = await getAddressFromCoordinates(
+            position.latitude, position.longitude);
+      } catch (e) {
+        if (kDebugMode) debugPrint('[LocationService] Geocoding failed: $e');
+      }
 
       // Try to persist, but never let errors crash the UI.
       try {
