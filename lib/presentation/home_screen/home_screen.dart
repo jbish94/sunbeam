@@ -190,6 +190,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
         if (weatherData != null) {
           debugPrint('📍 [HomeScreen] Weather data received successfully');
+
+          // If geocoding returned null (common on web), fall back to the
+          // city name embedded in the OpenWeather response.
+          final geoAddress = locationData['address'] as String?;
+          if ((geoAddress == null || geoAddress.isEmpty) &&
+              weatherData['city_address'] != null) {
+            setState(() {
+              _currentLocation = weatherData['city_address'] as String;
+            });
+          }
+
           setState(() {
             _currentWeatherData = {
               'temperature':
@@ -685,16 +696,86 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     ];
   }
 
-  Widget _buildDynamicSafetyRecommendations() =>
-      const SafetyRecommendationsWidget(
-        spfRecommendation: 'SPF 30+ recommended',
-        safetyLevel: 'Moderate',
-        protectiveMeasures: [
-          'Wear sunscreen',
+  Widget _buildDynamicSafetyRecommendations() {
+    final uv = (_currentWeatherData['uvIndex'] as num?)?.toDouble() ?? 0.0;
+    final rec = _uvRecommendations(uv);
+    return SafetyRecommendationsWidget(
+      spfRecommendation: rec['spf'] as String,
+      safetyLevel: rec['level'] as String,
+      protectiveMeasures: rec['measures'] as List<String>,
+    );
+  }
+
+  Map<String, dynamic> _uvRecommendations(double uv) {
+    if (uv < 1) {
+      return {
+        'level': 'Low',
+        'spf': 'No SPF needed — great time for sun exposure',
+        'measures': [
+          'Enjoy the sun freely',
           'Stay hydrated',
-          'Avoid midday sun'
+          'Good window for vitamin D synthesis',
         ],
-      );
+      };
+    } else if (uv < 3) {
+      return {
+        'level': 'Low',
+        'spf': 'SPF 15 optional for extended time outdoors',
+        'measures': [
+          'Minimal protection needed',
+          'Stay hydrated',
+          'Ideal for longer outdoor sessions',
+        ],
+      };
+    } else if (uv < 6) {
+      return {
+        'level': 'Moderate',
+        'spf': 'SPF 15–30 recommended',
+        'measures': [
+          'Apply SPF 15–30 sunscreen',
+          'Wear a wide-brimmed hat',
+          'Stay hydrated',
+          'Seek shade if outdoors for extended periods',
+        ],
+      };
+    } else if (uv < 8) {
+      return {
+        'level': 'High',
+        'spf': 'SPF 30+ required',
+        'measures': [
+          'Apply SPF 30+ sunscreen and reapply every 2 hours',
+          'Wear protective clothing and hat',
+          'Use UV-blocking sunglasses',
+          'Limit exposure between 10 AM – 4 PM',
+          'Stay hydrated',
+        ],
+      };
+    } else if (uv < 11) {
+      return {
+        'level': 'Very High',
+        'spf': 'SPF 50+ required — minimise exposure',
+        'measures': [
+          'Apply SPF 50+ sunscreen generously',
+          'Cover up: long sleeves, hat, and sunglasses',
+          'Avoid sun between 10 AM – 4 PM',
+          'Seek shade whenever possible',
+          'Stay well hydrated',
+        ],
+      };
+    } else {
+      return {
+        'level': 'Extreme',
+        'spf': 'SPF 50+ — avoid direct sun exposure',
+        'measures': [
+          'Avoid going outside during peak hours',
+          'Apply SPF 50+ if outdoors is unavoidable',
+          'Wear full protective clothing',
+          'Stay in the shade at all times',
+          'Keep children and sensitive individuals indoors',
+        ],
+      };
+    }
+  }
 
   void _onLogSessionTapped() {
     final user = Supabase.instance.client.auth.currentUser;

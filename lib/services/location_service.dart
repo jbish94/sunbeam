@@ -131,18 +131,47 @@ class LocationService {
     if (user == null) return null;
 
     try {
-      final response = await client.from('user_locations').upsert({
-        'user_id': user.id,
-        'latitude': position.latitude,
-        'longitude': position.longitude,
-        'updated_at': DateTime.now().toIso8601String(),
-      }).select('id').single();
+      final address =
+          await getAddressFromCoordinates(position.latitude, position.longitude);
+      final timezone = await getTimezone(position.latitude, position.longitude);
+
+      // Parse city and country from address string (best-effort)
+      String? city;
+      String? country;
+      if (address != null) {
+        final parts = address.split(', ');
+        if (parts.length >= 1) city = parts[0];
+        if (parts.length >= 3) country = parts[parts.length - 1];
+      }
+
+      // Mark all existing locations for this user as not current
+      await client
+          .from('user_locations')
+          .update({'is_current': false})
+          .eq('user_id', user.id);
+
+      // Insert a fresh current location row
+      final response = await client
+          .from('user_locations')
+          .insert({
+            'user_id': user.id,
+            'latitude': position.latitude,
+            'longitude': position.longitude,
+            'altitude': position.altitude,
+            'accuracy': position.accuracy,
+            'address': address,
+            'city': city,
+            'country': country,
+            'timezone': timezone,
+            'is_current': true,
+            'recorded_at': DateTime.now().toIso8601String(),
+          })
+          .select('id')
+          .single();
 
       return response['id'] as String?;
     } catch (e) {
-      if (kDebugMode) {
-        debugPrint('Error saving location to Supabase: $e');
-      }
+      if (kDebugMode) debugPrint('Error saving location to Supabase: $e');
       return null;
     }
   }
@@ -190,9 +219,28 @@ class LocationService {
     }
   }
 
-  /// Stub for existing callers expecting this method.
-  /// Extend later if you truly want to read location from Supabase.
+  /// Returns the most recent location saved for the current user.
   Future<Map<String, dynamic>?> getCurrentLocationFromSupabase() async {
-    return null;
+    final client = _safeSupabaseClient;
+    if (client == null) return null;
+
+    final user = client.auth.currentUser;
+    if (user == null) return null;
+
+    try {
+      final response = await client
+          .from('user_locations')
+          .select('latitude, longitude, address, city, country, timezone')
+          .eq('user_id', user.id)
+          .eq('is_current', true)
+          .order('recorded_at', ascending: false)
+          .limit(1)
+          .maybeSingle();
+
+      return response;
+    } catch (e) {
+      if (kDebugMode) debugPrint('Error fetching location from Supabase: $e');
+      return null;
+    }
   }
 }

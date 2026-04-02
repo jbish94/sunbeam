@@ -118,6 +118,15 @@ class WeatherService {
     final clouds = data['clouds'] ?? {};
     final sys = data['sys'] ?? {};
 
+    // OpenWeather current-weather includes top-level "name" (city) and
+    // sys.country — useful as a web-friendly address fallback since the
+    // geocoding package doesn't work on web.
+    final cityName = data['name']?.toString();
+    final countryCode = sys['country']?.toString();
+    final cityAddress = (cityName != null && countryCode != null)
+        ? '$cityName, $countryCode'
+        : cityName;
+
     return {
       'temperature': (main['temp'] as num?)?.toDouble() ?? 0.0,
       'feels_like': (main['feels_like'] as num?)?.toDouble() ?? 0.0,
@@ -132,6 +141,8 @@ class WeatherService {
       'weather_condition': weather['main']?.toString() ?? 'Unknown',
       'description': weather['description']?.toString() ?? 'No description',
       'icon_code': weather['icon']?.toString() ?? '01d',
+      'city_name': cityName,
+      'city_address': cityAddress, // e.g. "San Francisco, US"
       'sunrise': sys['sunrise'] != null
           ? DateTime.fromMillisecondsSinceEpoch((sys['sunrise'] as int) * 1000)
           : null,
