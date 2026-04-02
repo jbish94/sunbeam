@@ -25,6 +25,8 @@ class _AuthFormWidgetState extends State<AuthFormWidget> {
   bool _isSignUp = true;
   bool _obscurePassword = true;
   bool _isSubmitting = false;
+  bool _awaitingConfirmation = false;
+  bool _resetEmailSent = false;
 
   @override
   void dispose() {
@@ -38,8 +40,7 @@ class _AuthFormWidgetState extends State<AuthFormWidget> {
     final emailOk = _emailController.text.trim().isNotEmpty &&
         _emailController.text.contains('@');
     final passwordOk = _passwordController.text.length >= 6;
-    final nameOk =
-        !_isSignUp || _nameController.text.trim().length >= 2;
+    final nameOk = !_isSignUp || _nameController.text.trim().length >= 2;
     return emailOk && passwordOk && nameOk;
   }
 
@@ -54,11 +55,17 @@ class _AuthFormWidgetState extends State<AuthFormWidget> {
 
       if (_isSignUp) {
         final name = _nameController.text.trim();
-        await Supabase.instance.client.auth.signUp(
+        final response = await Supabase.instance.client.auth.signUp(
           email: email,
           password: password,
           data: {'full_name': name},
         );
+        if (!mounted) return;
+        // session == null means Supabase requires email confirmation
+        if (response.session == null) {
+          setState(() => _awaitingConfirmation = true);
+          return;
+        }
       } else {
         await Supabase.instance.client.auth.signInWithPassword(
           email: email,
@@ -90,11 +97,153 @@ class _AuthFormWidgetState extends State<AuthFormWidget> {
     }
   }
 
+  Future<void> _sendPasswordReset() async {
+    final email = _emailController.text.trim().toLowerCase();
+    if (email.isEmpty || !email.contains('@')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Enter your email address above first.'),
+          backgroundColor: AppTheme.lightTheme.colorScheme.error,
+        ),
+      );
+      return;
+    }
+
+    setState(() => _isSubmitting = true);
+    try {
+      await Supabase.instance.client.auth.resetPasswordForEmail(email);
+      if (mounted) setState(() => _resetEmailSent = true);
+    } on AuthException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(e.message),
+            backgroundColor: AppTheme.lightTheme.colorScheme.error,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isSubmitting = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    if (_awaitingConfirmation) return _buildConfirmationMessage();
+    if (_resetEmailSent) return _buildResetSentMessage();
+    return _buildForm();
+  }
+
+  Widget _buildConfirmationMessage() {
+    return Column(
+      children: [
+        Container(
+          width: 18.w,
+          height: 18.w,
+          decoration: BoxDecoration(
+            color: AppTheme.lightTheme.colorScheme.primary.withValues(alpha: 0.1),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(
+            Icons.mark_email_unread_outlined,
+            color: AppTheme.lightTheme.colorScheme.primary,
+            size: 9.w,
+          ),
+        ),
+        SizedBox(height: 2.h),
+        Text(
+          'Check your inbox',
+          style: AppTheme.lightTheme.textTheme.titleLarge
+              ?.copyWith(fontWeight: FontWeight.w700),
+          textAlign: TextAlign.center,
+        ),
+        SizedBox(height: 1.h),
+        Text(
+          'We sent a confirmation link to\n${_emailController.text.trim()}',
+          style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
+            color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+            height: 1.5,
+          ),
+          textAlign: TextAlign.center,
+        ),
+        SizedBox(height: 1.h),
+        Text(
+          'Click the link in the email to activate your account, then come back and sign in.',
+          style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+            color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+            height: 1.5,
+          ),
+          textAlign: TextAlign.center,
+        ),
+        SizedBox(height: 3.h),
+        TextButton(
+          onPressed: () => setState(() {
+            _awaitingConfirmation = false;
+            _isSignUp = false;
+          }),
+          child: Text(
+            'I confirmed my email — Sign in',
+            style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
+              color: AppTheme.lightTheme.colorScheme.primary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildResetSentMessage() {
+    return Column(
+      children: [
+        Container(
+          width: 18.w,
+          height: 18.w,
+          decoration: BoxDecoration(
+            color: AppTheme.lightTheme.colorScheme.primary.withValues(alpha: 0.1),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(
+            Icons.lock_reset,
+            color: AppTheme.lightTheme.colorScheme.primary,
+            size: 9.w,
+          ),
+        ),
+        SizedBox(height: 2.h),
+        Text(
+          'Reset link sent',
+          style: AppTheme.lightTheme.textTheme.titleLarge
+              ?.copyWith(fontWeight: FontWeight.w700),
+          textAlign: TextAlign.center,
+        ),
+        SizedBox(height: 1.h),
+        Text(
+          'Check ${_emailController.text.trim()} for a password reset link.',
+          style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
+            color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+            height: 1.5,
+          ),
+          textAlign: TextAlign.center,
+        ),
+        SizedBox(height: 3.h),
+        TextButton(
+          onPressed: () => setState(() => _resetEmailSent = false),
+          child: Text(
+            'Back to Sign In',
+            style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
+              color: AppTheme.lightTheme.colorScheme.primary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildForm() {
     return Form(
       key: _formKey,
-      onChanged: () => setState(() {}), // revalidate on every keystroke
+      onChanged: () => setState(() {}),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -107,6 +256,26 @@ class _AuthFormWidgetState extends State<AuthFormWidget> {
           _buildEmailField(),
           SizedBox(height: 2.h),
           _buildPasswordField(),
+          if (!_isSignUp) ...[
+            SizedBox(height: 1.h),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton(
+                onPressed: _isSubmitting ? null : _sendPasswordReset,
+                style: TextButton.styleFrom(
+                  padding: EdgeInsets.zero,
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: Text(
+                  'Forgot password?',
+                  style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+                    color: AppTheme.lightTheme.colorScheme.primary,
+                  ),
+                ),
+              ),
+            ),
+          ],
           SizedBox(height: 3.h),
           _buildSubmitButton(),
         ],
@@ -142,10 +311,10 @@ class _AuthFormWidgetState extends State<AuthFormWidget> {
       textCapitalization: TextCapitalization.words,
       keyboardType: TextInputType.name,
       textInputAction: TextInputAction.next,
-      decoration: InputDecoration(
+      decoration: const InputDecoration(
         labelText: 'Full Name',
         hintText: 'Your name',
-        prefixIcon: const Icon(Icons.person_outline),
+        prefixIcon: Icon(Icons.person_outline),
       ),
       validator: (v) {
         if (_isSignUp && (v == null || v.trim().length < 2)) {
