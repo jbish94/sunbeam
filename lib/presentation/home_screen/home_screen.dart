@@ -166,7 +166,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         debugPrint('📍 [HomeScreen] Coordinates: $lat, $lng');
 
         debugPrint('📍 [HomeScreen] Fetching weather + location name...');
-        final results = await Future.wait([
+        final results = await Future.wait<dynamic>([
           _weatherService.getCompleteWeatherData(lat, lng),
           _weatherService.getHourlyUvForecast(lat, lng),
           _weatherService.getLocationName(lat, lng),
@@ -859,100 +859,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         ],
       };
     }
-  }
-
-  void _onLogSessionTapped() {
-    final user = Supabase.instance.client.auth.currentUser;
-    if (user != null) {
-      Navigator.pushNamed(context, AppRoutes.logSession);
-    } else {
-      _showSignUpPrompt();
-    }
-  }
-
-  void _showSignUpPrompt() {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      backgroundColor: AppTheme.lightTheme.colorScheme.surface,
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.fromLTRB(6.w, 3.h, 6.w, 4.h),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 10.w,
-              height: 0.5.h,
-              decoration: BoxDecoration(
-                color: AppTheme.lightTheme.colorScheme.outline
-                    .withValues(alpha: 0.3),
-                borderRadius: BorderRadius.circular(4),
-              ),
-            ),
-            SizedBox(height: 3.h),
-            CustomIconWidget(
-              iconName: 'wb_sunny',
-              color: AppTheme.lightTheme.primaryColor,
-              size: 12.w,
-            ),
-            SizedBox(height: 2.h),
-            Text(
-              'Save Your Sessions',
-              style: AppTheme.lightTheme.textTheme.titleLarge
-                  ?.copyWith(fontWeight: FontWeight.w700),
-              textAlign: TextAlign.center,
-            ),
-            SizedBox(height: 1.h),
-            Text(
-              'Create a free account to log sessions, track your progress, and view insights over time.',
-              style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
-                color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
-                height: 1.5,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            SizedBox(height: 3.h),
-            SizedBox(
-              width: double.infinity,
-              height: 52,
-              child: ElevatedButton(
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  Navigator.pushNamed(context, AppRoutes.welcomeScreen);
-                },
-                style: ElevatedButton.styleFrom(
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: Text(
-                  'Create Free Account',
-                  style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
-                    color: AppTheme.lightTheme.colorScheme.onPrimary,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ),
-            SizedBox(height: 1.5.h),
-            TextButton(
-              onPressed: () {
-                Navigator.pop(ctx);
-                Navigator.pushNamed(context, AppRoutes.welcomeScreen);
-              },
-              child: Text(
-                'Already have an account? Sign in',
-                style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
-                  color: AppTheme.lightTheme.colorScheme.primary,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
   }
 
   void _onLogSessionTapped() {
