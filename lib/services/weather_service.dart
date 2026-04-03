@@ -68,14 +68,19 @@ class WeatherService {
     try {
       _validateApiKey();
 
+      // Use One Call 3.0 current data — the old /data/2.5/uvi endpoint is deprecated
       final url = Uri.parse(
-          '$_baseUrl/uvi?lat=$latitude&lon=$longitude&appid=$_apiKey');
+        'https://api.openweathermap.org/data/3.0/onecall'
+        '?lat=$latitude&lon=$longitude&appid=$_apiKey'
+        '&exclude=minutely,hourly,daily,alerts',
+      );
 
       final response = await http.get(url).timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        return (data['value'] as num?)?.toDouble();
+        final data = json.decode(response.body) as Map<String, dynamic>;
+        final current = data['current'] as Map<String, dynamic>?;
+        return (current?['uvi'] as num?)?.toDouble();
       } else {
         debugPrint('UV Index API error: ${response.statusCode} - ${response.body}');
         return null;
@@ -163,7 +168,7 @@ class WeatherService {
       _validateApiKey();
 
       final url = Uri.parse(
-        'https://api.openweathermap.org/data/2.5/onecall'
+        'https://api.openweathermap.org/data/3.0/onecall'
         '?lat=$latitude&lon=$longitude&appid=$_apiKey'
         '&units=metric&exclude=minutely,daily,alerts',
       );
