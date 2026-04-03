@@ -118,6 +118,15 @@ class WeatherService {
     final clouds = data['clouds'] ?? {};
     final sys = data['sys'] ?? {};
 
+    // OpenWeather current-weather includes top-level "name" (city) and
+    // sys.country — useful as a web-friendly address fallback since the
+    // geocoding package doesn't work on web.
+    final cityName = data['name']?.toString();
+    final countryCode = sys['country']?.toString();
+    final cityAddress = (cityName != null && countryCode != null)
+        ? '$cityName, $countryCode'
+        : cityName;
+
     return {
       'temperature': (main['temp'] as num?)?.toDouble() ?? 0.0,
       'feels_like': (main['feels_like'] as num?)?.toDouble() ?? 0.0,
@@ -132,6 +141,8 @@ class WeatherService {
       'weather_condition': weather['main']?.toString() ?? 'Unknown',
       'description': weather['description']?.toString() ?? 'No description',
       'icon_code': weather['icon']?.toString() ?? '01d',
+      'city_name': cityName,
+      'city_address': cityAddress, // e.g. "San Francisco, US"
       'sunrise': sys['sunrise'] != null
           ? DateTime.fromMillisecondsSinceEpoch((sys['sunrise'] as int) * 1000)
           : null,
@@ -140,6 +151,67 @@ class WeatherService {
           : null,
       'timestamp': DateTime.now(),
     };
+  }
+
+  /// Returns today's hourly UV + temperature data using the One Call 2.5 API.
+  /// Each entry has: `dt` (DateTime), `time` (String e.g. "2PM"),
+  /// `uvIndex` (double), `temp` (int, °F).
+  /// Returns null if the API key doesn't support One Call or on any error.
+  Future<List<Map<String, dynamic>>?> getHourlyUvForecast(
+      double latitude, double longitude) async {
+    try {
+      _validateApiKey();
+
+      final url = Uri.parse(
+        'https://api.openweathermap.org/data/2.5/onecall'
+        '?lat=$latitude&lon=$longitude&appid=$_apiKey'
+        '&units=metric&exclude=minutely,daily,alerts',
+      );
+
+      final response =
+          await http.get(url).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body) as Map<String, dynamic>;
+        final hourly = data['hourly'] as List? ?? [];
+
+        final now = DateTime.now();
+        final todayEnd =
+            DateTime(now.year, now.month, now.day, 23, 59, 59);
+
+        final result = <Map<String, dynamic>>[];
+        for (final h in hourly) {
+          final dt = DateTime.fromMillisecondsSinceEpoch(
+              (h['dt'] as int) * 1000);
+          if (dt.isBefore(DateTime(now.year, now.month, now.day)) ||
+              dt.isAfter(todayEnd)) continue;
+
+          final tempC = (h['temp'] as num?)?.toDouble() ?? 0.0;
+          result.add({
+            'dt': dt,
+            'time': _formatHour(dt),
+            'uvIndex': (h['uvi'] as num?)?.toDouble() ?? 0.0,
+            'temp': tempC * 9 / 5 + 32, // convert to °F for chart tooltip
+          });
+        }
+        return result;
+      } else {
+        debugPrint(
+            '[WeatherService] One Call API returned ${response.statusCode}');
+        return null;
+      }
+    } catch (e) {
+      debugPrint('[WeatherService] getHourlyUvForecast error: $e');
+      return null;
+    }
+  }
+
+  String _formatHour(DateTime dt) {
+    final h = dt.hour;
+    if (h == 0) return '12AM';
+    if (h < 12) return '${h}AM';
+    if (h == 12) return '12PM';
+    return '${h - 12}PM';
   }
 
   Future<Map<String, dynamic>?> getCompleteWeatherData(

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sizer/sizer.dart';
@@ -30,6 +32,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   final LocationService _locationService = LocationService.instance;
   final WeatherService _weatherService = WeatherService.instance;
 
+  StreamSubscription<AuthState>? _authSubscription;
+
   Map<String, dynamic> userGoals = {
     'primary_goal_type': 'sessions_per_day',
     'enable_secondary_goal': true,
@@ -41,22 +45,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   };
 
   Map<String, dynamic> currentProgress = {
-    'sessions_today': 1,
-    'minutes_today': 15,
-    'sessions_this_week': 8,
-    'minutes_this_week': 120,
+    'sessions_today': 0,
+    'minutes_today': 0,
+    'sessions_this_week': 0,
+    'minutes_this_week': 0,
   };
 
-  final List<Map<String, dynamic>> hourlyUvData = [
-    {"time": "6AM", "uvIndex": 1, "temp": 65},
-    {"time": "8AM", "uvIndex": 3, "temp": 68},
-    {"time": "10AM", "uvIndex": 6, "temp": 72},
-    {"time": "12PM", "uvIndex": 9, "temp": 78},
-    {"time": "2PM", "uvIndex": 11, "temp": 82},
-    {"time": "4PM", "uvIndex": 8, "temp": 80},
-    {"time": "6PM", "uvIndex": 5, "temp": 76},
-    {"time": "8PM", "uvIndex": 2, "temp": 72},
-  ];
+  List<Map<String, dynamic>> _hourlyUvData = [];
+  Map<String, dynamic>? _sunWindow;
 
   Map<String, dynamic> _currentWeatherData = {
     'temperature': 78.0, // can be double; we’ll round when using
@@ -87,7 +83,76 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   void initState() {
     super.initState();
     _loadGoalSettings();
+    _loadSessionProgress();
     _initializeLocationAndWeather();
+
+    // React to sign-in / sign-out without requiring a restart
+    _authSubscription = Supabase.instance.client.auth.onAuthStateChange.listen(
+      (data) {
+        if (mounted) {
+          setState(() {}); // rebuild so FAB / greeting update immediately
+          _loadSessionProgress(); // refresh progress for the new user state
+        }
+      },
+    );
+  }
+
+  @override
+  void dispose() {
+    _authSubscription?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadSessionProgress() async {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) {
+      if (mounted) {
+        setState(() => currentProgress = {
+          'sessions_today': 0,
+          'minutes_today': 0,
+          'sessions_this_week': 0,
+          'minutes_this_week': 0,
+        });
+      }
+      return;
+    }
+
+    try {
+      final now = DateTime.now();
+      final todayStart = DateTime(now.year, now.month, now.day);
+      final weekStart = todayStart.subtract(Duration(days: now.weekday - 1));
+
+      final sessions = await Supabase.instance.client
+          .from('sun_sessions')
+          .select('start_time, duration_minutes')
+          .eq('user_id', user.id)
+          .gte('start_time', weekStart.toIso8601String());
+
+      int sessionsToday = 0, minutesToday = 0;
+      int sessionsWeek = 0, minutesWeek = 0;
+
+      for (final s in sessions as List) {
+        final start = DateTime.parse(s['start_time'] as String);
+        final mins = (s['duration_minutes'] as int?) ?? 0;
+        sessionsWeek++;
+        minutesWeek += mins;
+        if (!start.isBefore(todayStart)) {
+          sessionsToday++;
+          minutesToday += mins;
+        }
+      }
+
+      if (mounted) {
+        setState(() => currentProgress = {
+          'sessions_today': sessionsToday,
+          'minutes_today': minutesToday,
+          'sessions_this_week': sessionsWeek,
+          'minutes_this_week': minutesWeek,
+        });
+      }
+    } catch (e) {
+      debugPrint('[HomeScreen] Failed to load session progress: $e');
+    }
   }
 
   Future<void> _initializeLocationAndWeather() async {
@@ -108,17 +173,39 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         final lng = (locationData['longitude'] as num).toDouble();
         debugPrint('📍 [HomeScreen] Coordinates: $lat, $lng');
 
-        setState(() {
-          _currentLocation = locationData['address'] ??
-              "${lat.toStringAsFixed(4)}, ${lng.toStringAsFixed(4)}";
-        });
-
         debugPrint('📍 [HomeScreen] Fetching weather data...');
-        final weatherData =
-            await _weatherService.getCompleteWeatherData(lat, lng);
+        final results = await Future.wait([
+          _weatherService.getCompleteWeatherData(lat, lng),
+          _weatherService.getHourlyUvForecast(lat, lng),
+        ]);
+
+        final weatherData = results[0] as Map<String, dynamic>?;
+        final hourlyData = results[1] as List<Map<String, dynamic>>?;
+
+        // Resolve display location: geocoding → OpenWeather city → coordinates
+        final geoAddress = locationData['address'] as String?;
+        final cityAddress = weatherData?['city_address'] as String?;
+        final displayLocation = (geoAddress?.isNotEmpty == true)
+            ? geoAddress!
+            : (cityAddress?.isNotEmpty == true)
+                ? cityAddress!
+                : '${lat.toStringAsFixed(3)}, ${lng.toStringAsFixed(3)}';
+
+        setState(() => _currentLocation = displayLocation);
 
         if (weatherData != null) {
           debugPrint('📍 [HomeScreen] Weather data received successfully');
+
+          // If geocoding returned null (common on web), fall back to the
+          // city name embedded in the OpenWeather response.
+          final geoAddress = locationData['address'] as String?;
+          if ((geoAddress == null || geoAddress.isEmpty) &&
+              weatherData['city_address'] != null) {
+            setState(() {
+              _currentLocation = weatherData['city_address'] as String;
+            });
+          }
+
           setState(() {
             _currentWeatherData = {
               'temperature':
@@ -136,6 +223,17 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           });
         } else {
           debugPrint('⚠️ [HomeScreen] Weather data is null');
+        }
+
+        if (hourlyData != null && hourlyData.isNotEmpty) {
+          debugPrint(
+              '📍 [HomeScreen] Hourly UV data: ${hourlyData.length} points');
+          setState(() {
+            _hourlyUvData = hourlyData;
+            _sunWindow = _computeSunWindow(hourlyData);
+          });
+        } else {
+          debugPrint('⚠️ [HomeScreen] Hourly UV data unavailable');
         }
       } else {
         // Location fetch failed - update UI with appropriate message
@@ -216,7 +314,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     SizedBox(height: 2.h),
                     _buildDynamicSunWindowCard(),
                     SizedBox(height: 1.h),
-                    HourlyUvChartWidget(hourlyData: hourlyUvData),
+                    HourlyUvChartWidget(
+                      hourlyData: _hourlyUvData.isNotEmpty
+                          ? _hourlyUvData
+                          : _placeholderUvData(),
+                    ),
                     SizedBox(height: 1.h),
                     if (_isLoadingWeather)
                       Center(
@@ -303,7 +405,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   ),
                   SizedBox(height: 0.5.h),
                   Text(
-                    'Ready for some sunshine?',
+                    _getWelcomeSubtitle(),
                     style: AppTheme.lightTheme.textTheme.headlineSmall
                         ?.copyWith(fontWeight: FontWeight.w700),
                   ),
@@ -525,23 +627,254 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildDynamicSunWindowCard() => const SunWindowCardWidget(
-        startTime: '4 PM',
-        endTime: '5:30 PM',
-        recommendedMinutes: 15,
-        countdownText: '3h 15m',
+  Widget _buildDynamicSunWindowCard() {
+    final w = _sunWindow;
+    if (w == null) {
+      // No optimal window found today — show a "no window" placeholder
+      return Container(
+        width: double.infinity,
+        margin: EdgeInsets.symmetric(horizontal: 4.w, vertical: 2.h),
+        padding: EdgeInsets.all(4.w),
+        decoration: BoxDecoration(
+          color: AppTheme.lightTheme.cardColor,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            CustomIconWidget(
+              iconName: 'cloud',
+              color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+              size: 7.w,
+            ),
+            SizedBox(width: 3.w),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'No Optimal Window Today',
+                    style: AppTheme.lightTheme.textTheme.titleSmall
+                        ?.copyWith(fontWeight: FontWeight.w600),
+                  ),
+                  SizedBox(height: 0.5.h),
+                  Text(
+                    _isLoadingWeather
+                        ? 'Loading forecast…'
+                        : 'UV levels aren\'t in the optimal 3–7 range today.',
+                    style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+                      color:
+                          AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       );
+    }
 
-  Widget _buildDynamicSafetyRecommendations() =>
-      const SafetyRecommendationsWidget(
-        spfRecommendation: 'SPF 30+ recommended',
-        safetyLevel: 'Moderate',
-        protectiveMeasures: [
-          'Wear sunscreen',
+    return SunWindowCardWidget(
+      startTime: w['startTime'] as String,
+      endTime: w['endTime'] as String,
+      recommendedMinutes: w['recommendedMinutes'] as int,
+      countdownText: w['countdownText'] as String,
+    );
+  }
+
+  /// Minimal placeholder while live UV data is loading so the chart
+  /// doesn't render with zero data points.
+  List<Map<String, dynamic>> _placeholderUvData() {
+    return [
+      {'time': '6AM', 'uvIndex': 0, 'temp': 65},
+      {'time': '9AM', 'uvIndex': 0, 'temp': 68},
+      {'time': '12PM', 'uvIndex': 0, 'temp': 72},
+      {'time': '3PM', 'uvIndex': 0, 'temp': 70},
+      {'time': '6PM', 'uvIndex': 0, 'temp': 66},
+    ];
+  }
+
+  Widget _buildDynamicSafetyRecommendations() {
+    final uv = (_currentWeatherData['uvIndex'] as num?)?.toDouble() ?? 0.0;
+    final rec = _uvRecommendations(uv);
+    return SafetyRecommendationsWidget(
+      spfRecommendation: rec['spf'] as String,
+      safetyLevel: rec['level'] as String,
+      protectiveMeasures: rec['measures'] as List<String>,
+    );
+  }
+
+  Map<String, dynamic> _uvRecommendations(double uv) {
+    if (uv < 1) {
+      return {
+        'level': 'Low',
+        'spf': 'No SPF needed — great time for sun exposure',
+        'measures': [
+          'Enjoy the sun freely',
           'Stay hydrated',
-          'Avoid midday sun'
+          'Good window for vitamin D synthesis',
         ],
-      );
+      };
+    } else if (uv < 3) {
+      return {
+        'level': 'Low',
+        'spf': 'SPF 15 optional for extended time outdoors',
+        'measures': [
+          'Minimal protection needed',
+          'Stay hydrated',
+          'Ideal for longer outdoor sessions',
+        ],
+      };
+    } else if (uv < 6) {
+      return {
+        'level': 'Moderate',
+        'spf': 'SPF 15–30 recommended',
+        'measures': [
+          'Apply SPF 15–30 sunscreen',
+          'Wear a wide-brimmed hat',
+          'Stay hydrated',
+          'Seek shade if outdoors for extended periods',
+        ],
+      };
+    } else if (uv < 8) {
+      return {
+        'level': 'High',
+        'spf': 'SPF 30+ required',
+        'measures': [
+          'Apply SPF 30+ sunscreen and reapply every 2 hours',
+          'Wear protective clothing and hat',
+          'Use UV-blocking sunglasses',
+          'Limit exposure between 10 AM – 4 PM',
+          'Stay hydrated',
+        ],
+      };
+    } else if (uv < 11) {
+      return {
+        'level': 'Very High',
+        'spf': 'SPF 50+ required — minimise exposure',
+        'measures': [
+          'Apply SPF 50+ sunscreen generously',
+          'Cover up: long sleeves, hat, and sunglasses',
+          'Avoid sun between 10 AM – 4 PM',
+          'Seek shade whenever possible',
+          'Stay well hydrated',
+        ],
+      };
+    } else {
+      return {
+        'level': 'Extreme',
+        'spf': 'SPF 50+ — avoid direct sun exposure',
+        'measures': [
+          'Avoid going outside during peak hours',
+          'Apply SPF 50+ if outdoors is unavoidable',
+          'Wear full protective clothing',
+          'Stay in the shade at all times',
+          'Keep children and sensitive individuals indoors',
+        ],
+      };
+    }
+  }
+
+  void _onLogSessionTapped() {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user != null) {
+      Navigator.pushNamed(context, AppRoutes.logSession);
+    } else {
+      _showSignUpPrompt();
+    }
+  }
+
+  void _showSignUpPrompt() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      backgroundColor: AppTheme.lightTheme.colorScheme.surface,
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.fromLTRB(6.w, 3.h, 6.w, 4.h),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 10.w,
+              height: 0.5.h,
+              decoration: BoxDecoration(
+                color: AppTheme.lightTheme.colorScheme.outline
+                    .withValues(alpha: 0.3),
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ),
+            SizedBox(height: 3.h),
+            CustomIconWidget(
+              iconName: 'wb_sunny',
+              color: AppTheme.lightTheme.primaryColor,
+              size: 12.w,
+            ),
+            SizedBox(height: 2.h),
+            Text(
+              'Save Your Sessions',
+              style: AppTheme.lightTheme.textTheme.titleLarge
+                  ?.copyWith(fontWeight: FontWeight.w700),
+              textAlign: TextAlign.center,
+            ),
+            SizedBox(height: 1.h),
+            Text(
+              'Create a free account to log sessions, track your progress, and view insights over time.',
+              style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
+                color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+                height: 1.5,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            SizedBox(height: 3.h),
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  Navigator.pushNamed(context, AppRoutes.welcomeScreen);
+                },
+                style: ElevatedButton.styleFrom(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                child: Text(
+                  'Create Free Account',
+                  style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
+                    color: AppTheme.lightTheme.colorScheme.onPrimary,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+            SizedBox(height: 1.5.h),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                Navigator.pushNamed(context, AppRoutes.welcomeScreen);
+              },
+              child: Text(
+                'Already have an account? Sign in',
+                style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
+                  color: AppTheme.lightTheme.colorScheme.primary,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   void _onLogSessionTapped() {
     final user = Supabase.instance.client.auth.currentUser;
@@ -682,6 +1015,57 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
+  /// Finds the first upcoming block of hours where UV is 3–7 (optimal for
+  /// vitamin D synthesis without high burn risk).
+  Map<String, dynamic>? _computeSunWindow(
+      List<Map<String, dynamic>> hourly) {
+    if (hourly.isEmpty) return null;
+
+    final now = DateTime.now();
+    Map<String, dynamic>? windowStart;
+    Map<String, dynamic>? windowEnd;
+
+    for (final h in hourly) {
+      final dt = h['dt'] as DateTime;
+      // Skip hours more than 1h in the past
+      if (dt.isBefore(now.subtract(const Duration(hours: 1)))) continue;
+
+      final uv = (h['uvIndex'] as num).toDouble();
+      if (uv >= 3.0 && uv <= 7.0) {
+        windowStart ??= h;
+        windowEnd = h;
+      } else if (windowStart != null) {
+        break; // first contiguous window found
+      }
+    }
+
+    if (windowStart == null) return null;
+
+    final startDt = windowStart['dt'] as DateTime;
+    final uvAvg =
+        ((windowStart['uvIndex'] as num).toDouble() +
+                ((windowEnd ?? windowStart)['uvIndex'] as num).toDouble()) /
+            2;
+    final recommendedMins = uvAvg <= 4.0 ? 30 : uvAvg <= 6.0 ? 20 : 15;
+    final countdown = startDt.isAfter(now)
+        ? _formatCountdown(startDt.difference(now))
+        : 'Now';
+
+    return {
+      'startTime': windowStart['time'] as String,
+      'endTime': (windowEnd ?? windowStart)['time'] as String,
+      'recommendedMinutes': recommendedMins,
+      'countdownText': countdown,
+    };
+  }
+
+  String _formatCountdown(Duration d) {
+    if (d.inHours >= 1) {
+      return '${d.inHours}h ${d.inMinutes.remainder(60)}m';
+    }
+    return '${d.inMinutes}m';
+  }
+
   String _getGreeting() {
     final hour = DateTime.now().hour;
     if (hour < 12) return 'Good Morning';
@@ -689,9 +1073,23 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     return 'Good Evening';
   }
 
+  String _getWelcomeSubtitle() {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user != null) {
+      final name = (user.userMetadata?['full_name'] as String?)
+          ?.split(' ')
+          .first;
+      if (name != null && name.isNotEmpty) return 'Welcome back, $name!';
+    }
+    return 'Ready for some sunshine?';
+  }
+
   Future<void> _handleRefresh() async {
     setState(() => _isRefreshing = true);
-    await _updateLocationAndWeather();
+    await Future.wait([
+      _updateLocationAndWeather(),
+      _loadSessionProgress(),
+    ]);
     setState(() => _isRefreshing = false);
   }
 }
