@@ -10,6 +10,10 @@ if [ -z "${SUPABASE_ANON_KEY:-}" ]; then
   echo "ERROR: SUPABASE_ANON_KEY is not set. Add it in Vercel → Settings → Environment Variables."
   exit 1
 fi
+if [ -z "${OPENWEATHER_API_KEY:-}" ]; then
+  echo "ERROR: OPENWEATHER_API_KEY is not set. Add it in Vercel → Settings → Environment Variables."
+  exit 1
+fi
 
 git clone https://github.com/flutter/flutter.git -b stable --depth 1
 export PATH="$PWD/flutter/bin:$PATH"

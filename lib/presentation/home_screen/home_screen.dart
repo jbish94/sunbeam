@@ -195,24 +195,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
         if (weatherData != null) {
           debugPrint('📍 [HomeScreen] Weather data received successfully');
-
-          // If geocoding returned null (common on web), fall back to the
-          // city name embedded in the OpenWeather response.
-          final geoAddress = locationData['address'] as String?;
-          if ((geoAddress == null || geoAddress.isEmpty) &&
-              weatherData['city_address'] != null) {
-            setState(() {
-              _currentLocation = weatherData['city_address'] as String;
-            });
-          }
-
+          // API returns metric: temp in °C, wind in m/s — convert for display
+          final tempC = (weatherData['temperature'] as num?)?.toDouble() ?? 25.6;
+          final tempF = tempC * 9 / 5 + 32;
+          final windMs = (weatherData['wind_speed'] as num?)?.toDouble() ?? 3.6;
+          final windMph = windMs * 2.237;
           setState(() {
             _currentWeatherData = {
-              'temperature':
-                  (weatherData['temperature'] as num?)?.toDouble() ?? 78.0,
+              'temperature': tempF,
               'cloudCover': '${weatherData['cloud_cover'] ?? 20}%',
-              'windSpeed':
-                  '${(weatherData['wind_speed'] as num?)?.toStringAsFixed(1) ?? '8'} mph',
+              'windSpeed': '${windMph.toStringAsFixed(1)} mph',
               'humidity': '${weatherData['humidity'] ?? 65}%',
               'uvIndex': (weatherData['uv_index'] as num?)?.toDouble() ?? 7.0,
               'visibility': 'Good',
