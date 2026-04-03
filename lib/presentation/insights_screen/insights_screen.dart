@@ -371,44 +371,46 @@ class _InsightsScreenState extends State<InsightsScreen>
   }
 
   Widget _buildEmptyState() {
-    return SizedBox(
-      height: 60.h,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          CustomIconWidget(
-            iconName: 'wb_sunny',
-            color: AppTheme.lightTheme.colorScheme.onSurfaceVariant
-                .withValues(alpha: 0.4),
-            size: 20.w,
-          ),
-          SizedBox(height: 3.h),
-          Text(
-            'No sessions yet',
-            style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.w600,
+    return Center(
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: 8.w),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CustomIconWidget(
+              iconName: 'wb_sunny',
+              color: AppTheme.lightTheme.colorScheme.onSurfaceVariant
+                  .withValues(alpha: 0.4),
+              size: 20.w,
             ),
-          ),
-          SizedBox(height: 1.h),
-          Text(
-            'Log your first sun session to\nsee your insights here.',
-            style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
-              color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+            SizedBox(height: 3.h),
+            Text(
+              'No sessions yet',
+              style: AppTheme.lightTheme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+              textAlign: TextAlign.center,
             ),
-            textAlign: TextAlign.center,
-          ),
-          SizedBox(height: 4.h),
-          ElevatedButton.icon(
-            onPressed: () =>
-                Navigator.pushNamed(context, '/log-session-screen'),
-            icon: const CustomIconWidget(
-              iconName: 'add',
-              color: Colors.white,
-              size: 20,
+            SizedBox(height: 1.h),
+            Text(
+              'Log your first sun session to see your insights here.',
+              style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
+                color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+              ),
+              textAlign: TextAlign.center,
             ),
-            label: const Text('Log a Session'),
-          ),
-        ],
+            SizedBox(height: 3.h),
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: ElevatedButton(
+                onPressed: () =>
+                    Navigator.pushNamed(context, '/log-session-screen'),
+                child: const Text('Log a Session'),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
