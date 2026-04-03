@@ -428,7 +428,7 @@ class _InsightsScreenState extends State<InsightsScreen>
             Navigator.pushReplacementNamed(context, '/home-screen');
             break;
           case 1:
-            Navigator.pushNamed(context, '/log-session-screen');
+            Navigator.pushReplacementNamed(context, '/history-screen');
             break;
           case 2:
             // Already on insights
@@ -456,13 +456,13 @@ class _InsightsScreenState extends State<InsightsScreen>
         ),
         BottomNavigationBarItem(
           icon: CustomIconWidget(
-            iconName: 'add_circle_outline',
+            iconName: 'history',
             color: _selectedNavIndex == 1
                 ? AppTheme.lightTheme.primaryColor
                 : AppTheme.lightTheme.colorScheme.onSurfaceVariant,
             size: 24,
           ),
-          label: 'Log',
+          label: 'History',
         ),
         BottomNavigationBarItem(
           icon: CustomIconWidget(

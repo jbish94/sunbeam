@@ -530,7 +530,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             Navigator.pushReplacementNamed(context, '/home-screen');
             break;
           case 1:
-            Navigator.pushNamed(context, '/log-session-screen');
+            Navigator.pushReplacementNamed(context, '/history-screen');
             break;
           case 2:
             Navigator.pushReplacementNamed(context, '/insights-screen');
@@ -559,14 +559,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
         BottomNavigationBarItem(
           icon: CustomIconWidget(
-            iconName: 'add_circle_outline',
+            iconName: 'history',
             color:
                 _selectedNavIndex == 1
                     ? AppTheme.lightTheme.primaryColor
                     : AppTheme.lightTheme.colorScheme.onSurfaceVariant,
             size: 24,
           ),
-          label: 'Log',
+          label: 'History',
         ),
         BottomNavigationBarItem(
           icon: CustomIconWidget(

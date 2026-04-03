@@ -962,7 +962,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         setState(() => _selectedIndex = index);
         switch (index) {
           case 1:
-            _onLogSessionTapped();
+            Navigator.pushReplacementNamed(context, '/history-screen');
             break;
           case 2:
             Navigator.pushReplacementNamed(context, '/insights-screen');
@@ -980,7 +980,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       elevation: 8,
       items: [
         _navItem('home', 'Home', 0),
-        _navItem('add_circle_outline', 'Log', 1),
+        _navItem('history', 'History', 1),
         _navItem('insights', 'Insights', 2),
         _navItem('person', 'Profile', 3),
       ],

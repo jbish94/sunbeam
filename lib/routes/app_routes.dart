@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../presentation/history_screen/history_screen.dart';
 import '../presentation/log_session_screen/log_session_screen.dart';
 import '../presentation/onboarding_flow/onboarding_flow.dart';
 import '../presentation/profile_screen/profile_screen.dart';
@@ -16,6 +17,7 @@ class AppRoutes {
   static const String onboardingFlow = '/onboarding-flow';
   static const String profile = '/profile-screen';
   static const String home = '/home-screen';
+  static const String history = '/history-screen';
   static const String insights = '/insights-screen';
   static const String goalEditScreen = '/goal-edit-screen';
   static const String notificationsScreen = '/notifications-screen';
@@ -27,6 +29,7 @@ class AppRoutes {
     onboardingFlow: (context) => const OnboardingFlow(),
     profile: (context) => const ProfileScreen(),
     home: (context) => const HomeScreen(),
+    history: (context) => const HistoryScreen(),
     insights: (context) => const InsightsScreen(),
     goalEditScreen: (context) {
       final args =
