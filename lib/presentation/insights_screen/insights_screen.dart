@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sizer/sizer.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/app_export.dart';
 import '../../services/session_service.dart';
@@ -307,6 +308,9 @@ class _InsightsScreenState extends State<InsightsScreen>
   }
 
   Widget _buildBody() {
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) return _buildGuestState();
+
     if (_isLoading) {
       return Center(
         child: CircularProgressIndicator(
@@ -407,6 +411,50 @@ class _InsightsScreenState extends State<InsightsScreen>
                 onPressed: () =>
                     Navigator.pushNamed(context, '/log-session-screen'),
                 child: const Text('Log a Session'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildGuestState() {
+    return Center(
+      child: Padding(
+        padding: EdgeInsets.symmetric(horizontal: 8.w),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CustomIconWidget(
+              iconName: 'lock',
+              color: AppTheme.lightTheme.colorScheme.onSurfaceVariant
+                  .withValues(alpha: 0.4),
+              size: 16.w,
+            ),
+            SizedBox(height: 3.h),
+            Text(
+              'Sign in to see your insights',
+              style: AppTheme.lightTheme.textTheme.titleMedium
+                  ?.copyWith(fontWeight: FontWeight.w600),
+              textAlign: TextAlign.center,
+            ),
+            SizedBox(height: 1.h),
+            Text(
+              'Create a free account to log sessions and track your progress over time.',
+              style: AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
+                color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            SizedBox(height: 3.h),
+            SizedBox(
+              width: double.infinity,
+              height: 52,
+              child: ElevatedButton(
+                onPressed: () =>
+                    Navigator.pushNamed(context, '/welcome-screen'),
+                child: const Text('Sign In / Create Account'),
               ),
             ),
           ],
