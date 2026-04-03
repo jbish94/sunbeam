@@ -54,17 +54,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   List<Map<String, dynamic>> _hourlyUvData = [];
   Map<String, dynamic>? _sunWindow;
 
-  Map<String, dynamic> _currentWeatherData = {
-    'temperature': 78.0, // can be double; we’ll round when using
-    'cloudCover': '20%',
-    'windSpeed': '8 mph',
-    'humidity': '65%',
-    'uvIndex': 7.0,
-    'visibility': 'Good',
-    'precipitation': '0%',
-    'condition': 'Partly Sunny',
-    'description': 'Partly sunny',
-  };
+  // Null until real data arrives — prevents fake defaults from showing
+  Map<String, dynamic>? _currentWeatherData;
+  bool _weatherDataLoaded = false;
 
   final List<Map<String, dynamic>> educationArticles = [
     {
@@ -173,48 +165,56 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         final lng = (locationData['longitude'] as num).toDouble();
         debugPrint('📍 [HomeScreen] Coordinates: $lat, $lng');
 
-        debugPrint('📍 [HomeScreen] Fetching weather data...');
+        debugPrint('📍 [HomeScreen] Fetching weather + location name...');
         final results = await Future.wait([
           _weatherService.getCompleteWeatherData(lat, lng),
           _weatherService.getHourlyUvForecast(lat, lng),
+          _weatherService.getLocationName(lat, lng),
         ]);
 
         final weatherData = results[0] as Map<String, dynamic>?;
         final hourlyData = results[1] as List<Map<String, dynamic>>?;
+        final geoApiName = results[2] as String?;
 
-        // Resolve display location: geocoding → OpenWeather city → coordinates
+        // Resolve display location with priority:
+        // 1. Device geocoding (mobile, gives "City, State")
+        // 2. OpenWeather Geo API (web-safe, gives "City, State")
+        // 3. OpenWeather current weather city field ("City, US")
+        // 4. Raw coordinates — absolute last resort
         final geoAddress = locationData['address'] as String?;
         final cityAddress = weatherData?['city_address'] as String?;
         final displayLocation = (geoAddress?.isNotEmpty == true)
             ? geoAddress!
-            : (cityAddress?.isNotEmpty == true)
-                ? cityAddress!
-                : '${lat.toStringAsFixed(3)}, ${lng.toStringAsFixed(3)}';
+            : (geoApiName?.isNotEmpty == true)
+                ? geoApiName!
+                : (cityAddress?.isNotEmpty == true)
+                    ? cityAddress!
+                    : '${lat.toStringAsFixed(3)}, ${lng.toStringAsFixed(3)}';
 
         setState(() => _currentLocation = displayLocation);
 
         if (weatherData != null) {
           debugPrint('📍 [HomeScreen] Weather data received successfully');
           // API returns metric: temp in °C, wind in m/s — convert for display
-          final tempC = (weatherData['temperature'] as num?)?.toDouble() ?? 25.6;
+          final tempC = (weatherData['temperature'] as num?)?.toDouble() ?? 20.0;
           final tempF = tempC * 9 / 5 + 32;
-          final windMs = (weatherData['wind_speed'] as num?)?.toDouble() ?? 3.6;
+          final windMs = (weatherData['wind_speed'] as num?)?.toDouble() ?? 0.0;
           final windMph = windMs * 2.237;
           setState(() {
+            _weatherDataLoaded = true;
             _currentWeatherData = {
               'temperature': tempF,
-              'cloudCover': '${weatherData['cloud_cover'] ?? 20}%',
+              'cloudCover': '${weatherData['cloud_cover'] ?? 0}%',
               'windSpeed': '${windMph.toStringAsFixed(1)} mph',
-              'humidity': '${weatherData['humidity'] ?? 65}%',
-              'uvIndex': (weatherData['uv_index'] as num?)?.toDouble() ?? 7.0,
+              'humidity': '${weatherData['humidity'] ?? 0}%',
+              'uvIndex': (weatherData['uv_index'] as num?)?.toDouble() ?? 0.0,
               'visibility': 'Good',
-              'precipitation': '0%',
-              'condition': weatherData['weather_condition'] ?? 'Partly Sunny',
-              'description': weatherData['description'] ?? 'Partly sunny',
+              'condition': weatherData['weather_condition'] ?? 'Unknown',
+              'description': weatherData['description'] ?? '',
             };
           });
         } else {
-          debugPrint('⚠️ [HomeScreen] Weather data is null');
+          debugPrint('⚠️ [HomeScreen] Weather data is null — API key may be missing');
         }
 
         if (hourlyData != null && hourlyData.isNotEmpty) {
@@ -306,11 +306,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     SizedBox(height: 2.h),
                     _buildDynamicSunWindowCard(),
                     SizedBox(height: 1.h),
-                    HourlyUvChartWidget(
-                      hourlyData: _hourlyUvData.isNotEmpty
-                          ? _hourlyUvData
-                          : _placeholderUvData(),
-                    ),
+                    if (_isLoadingWeather)
+                      _buildUvChartPlaceholder(loading: true)
+                    else if (_hourlyUvData.isNotEmpty)
+                      HourlyUvChartWidget(hourlyData: _hourlyUvData)
+                    else
+                      _buildUvChartPlaceholder(loading: false),
                     SizedBox(height: 1.h),
                     if (_isLoadingWeather)
                       Center(
@@ -321,23 +322,23 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           ),
                         ),
                       )
-                    else
+                    else if (_weatherDataLoaded && _currentWeatherData != null)
                       WeatherBadgesWidget(
-                        // 🔑 ensure we always give an int
                         temperature:
-                            ((_currentWeatherData['temperature'] as num?) ??
-                                    78)
+                            ((_currentWeatherData!['temperature'] as num?) ?? 0)
                                 .round(),
                         cloudCover:
-                            _currentWeatherData['cloudCover'] as String? ??
-                                '20%',
+                            _currentWeatherData!['cloudCover'] as String? ??
+                                '—',
                         windSpeed:
-                            _currentWeatherData['windSpeed'] as String? ??
-                                '8 mph',
+                            _currentWeatherData!['windSpeed'] as String? ??
+                                '—',
                         humidity:
-                            _currentWeatherData['humidity'] as String? ??
-                                '65%',
-                      ),
+                            _currentWeatherData!['humidity'] as String? ??
+                                '—',
+                      )
+                    else
+                      _buildWeatherUnavailable(),
                     SizedBox(height: 1.h),
                     _buildDynamicSafetyRecommendations(),
                     SizedBox(height: 1.h),
@@ -475,7 +476,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               ),
               SizedBox(width: 1.w),
               Text(
-                _currentWeatherData['condition'] as String? ??
+                _currentWeatherData?['condition'] as String? ??
                     'Partly Sunny',
                 style:
                     AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
@@ -681,20 +682,106 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     );
   }
 
-  /// Minimal placeholder while live UV data is loading so the chart
-  /// doesn't render with zero data points.
-  List<Map<String, dynamic>> _placeholderUvData() {
-    return [
-      {'time': '6AM', 'uvIndex': 0, 'temp': 65},
-      {'time': '9AM', 'uvIndex': 0, 'temp': 68},
-      {'time': '12PM', 'uvIndex': 0, 'temp': 72},
-      {'time': '3PM', 'uvIndex': 0, 'temp': 70},
-      {'time': '6PM', 'uvIndex': 0, 'temp': 66},
-    ];
+  Widget _buildUvChartPlaceholder({required bool loading}) {
+    return Container(
+      width: double.infinity,
+      height: 30.h,
+      margin: EdgeInsets.symmetric(horizontal: 4.w, vertical: 1.h),
+      padding: EdgeInsets.all(4.w),
+      decoration: BoxDecoration(
+        color: AppTheme.lightTheme.cardColor,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Today\'s UV Index',
+                style: AppTheme.lightTheme.textTheme.titleMedium
+                    ?.copyWith(fontWeight: FontWeight.w600),
+              ),
+              CustomIconWidget(
+                iconName: 'wb_sunny',
+                color: AppTheme.lightTheme.primaryColor,
+                size: 20,
+              ),
+            ],
+          ),
+          Expanded(
+            child: Center(
+              child: loading
+                  ? CircularProgressIndicator(
+                      color: AppTheme.lightTheme.primaryColor)
+                  : Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CustomIconWidget(
+                          iconName: 'cloud_off',
+                          color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+                          size: 7.w,
+                        ),
+                        SizedBox(height: 1.h),
+                        Text(
+                          'UV data unavailable',
+                          style:
+                              AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
+                            color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        Text(
+                          'Check API key configuration',
+                          style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+                            color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildWeatherUnavailable() {
+    return Container(
+      margin: EdgeInsets.symmetric(horizontal: 4.w, vertical: 1.h),
+      padding: EdgeInsets.all(3.w),
+      decoration: BoxDecoration(
+        color: AppTheme.lightTheme.cardColor,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          CustomIconWidget(
+            iconName: 'cloud_off',
+            color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+            size: 5.w,
+          ),
+          SizedBox(width: 2.w),
+          Text(
+            'Weather data unavailable — check API key',
+            style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+              color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildDynamicSafetyRecommendations() {
-    final uv = (_currentWeatherData['uvIndex'] as num?)?.toDouble() ?? 0.0;
+    final uv = (_currentWeatherData?['uvIndex'] as num?)?.toDouble() ?? 0.0;
     final rec = _uvRecommendations(uv);
     return SafetyRecommendationsWidget(
       spfRecommendation: rec['spf'] as String,
