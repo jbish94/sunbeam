@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -59,6 +60,10 @@ class _AuthFormWidgetState extends State<AuthFormWidget> {
           email: email,
           password: password,
           data: {'full_name': name},
+          // On mobile, bounce the confirmation link back into the app via
+          // the registered io.supabase.sunbeam:// deep-link scheme.
+          emailRedirectTo:
+              kIsWeb ? null : 'io.supabase.sunbeam://login-callback/',
         );
         if (!mounted) return;
         // session == null means Supabase requires email confirmation

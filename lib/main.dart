@@ -50,7 +50,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     // Your actual app
     final Widget baseApp = MaterialApp(
-      title: 'sunbeam',
+      title: 'Sunbeam',
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: ThemeMode.light,

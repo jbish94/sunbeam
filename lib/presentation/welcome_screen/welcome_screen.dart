@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:sizer/sizer.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -9,8 +11,35 @@ import '../../widgets/custom_image_widget.dart';
 import './widgets/auth_form_widget.dart';
 import './widgets/privacy_footer_widget.dart';
 
-class WelcomeScreen extends StatelessWidget {
+class WelcomeScreen extends StatefulWidget {
   const WelcomeScreen({Key? key}) : super(key: key);
+
+  @override
+  State<WelcomeScreen> createState() => _WelcomeScreenState();
+}
+
+class _WelcomeScreenState extends State<WelcomeScreen> {
+  StreamSubscription<AuthState>? _authSubscription;
+  bool _navigated = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Completes the flow when auth arrives via deep link (e.g. the user
+    // taps the email confirmation link and supabase_flutter signs them in).
+    _authSubscription =
+        Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+      if (data.event == AuthChangeEvent.signedIn && mounted) {
+        _handleAuthSuccess(context);
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _authSubscription?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -114,9 +143,11 @@ class WelcomeScreen extends StatelessWidget {
     );
   }
 
-  static Future<void> _handleAuthSuccess(BuildContext context) async {
+  Future<void> _handleAuthSuccess(BuildContext context) async {
     final user = Supabase.instance.client.auth.currentUser;
     if (user == null || !context.mounted) return;
+    if (_navigated) return; // listener + form callback can both fire
+    _navigated = true;
 
     // Check if onboarding has been completed for this account
     try {

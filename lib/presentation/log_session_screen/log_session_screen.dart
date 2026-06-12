@@ -4,6 +4,7 @@ import 'package:sizer/sizer.dart';
 
 import '../../core/app_export.dart';
 import '../../services/session_service.dart';
+import '../../services/weather_service.dart';
 import './widgets/duration_picker_widget.dart';
 import './widgets/mood_energy_slider_widget.dart';
 import './widgets/notes_input_widget.dart';
@@ -35,10 +36,12 @@ class _LogSessionScreenState extends State<LogSessionScreen> {
   }
 
   void _checkIfRecommendedWindow() {
-    // Mock logic to determine if current time is in recommended window
-    final currentHour = DateTime.now().hour;
-    _isRecommendedWindow = currentHour >= 9 && currentHour <= 11 ||
-        currentHour >= 15 && currentHour <= 17;
+    // Use the most recent real UV reading (cached by the home screen).
+    // A moderate UV index (3-6) is treated as the recommended window;
+    // without data we make no claim.
+    final uv = (WeatherService.instance.lastWeatherData?['uv_index'] as num?)
+        ?.toDouble();
+    _isRecommendedWindow = uv != null && uv >= 3 && uv <= 6;
   }
 
   bool get _canSave {
