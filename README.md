@@ -1,13 +1,12 @@
 # Sunbeam ☀️
 
-A Flutter app for tracking sun exposure: live UV index and weather for your location, session logging with mood/energy tracking, goals, and insights. Backed by Supabase (auth + Postgres with row-level security) and OpenWeather.
+A Flutter app for tracking sun exposure: live UV index and weather for your location, session logging with mood/energy tracking, goals, and insights. Backed by Supabase (auth + Postgres with row-level security) and Open-Meteo (weather/UV — free, no API key required).
 
 ## Prerequisites
 
 - Flutter SDK 3.29+ (stable channel)
 - Xcode (for iOS) / Android Studio (for Android)
 - A Supabase project (URL + anon key)
-- An OpenWeather API key (https://openweathermap.org/api) — the hourly UV chart additionally requires One Call API access
 
 ## Configuration
 
@@ -16,10 +15,11 @@ All secrets are injected at build time via `--dart-define-from-file`. Copy the t
 ```json
 {
   "SUPABASE_URL": "https://YOUR-PROJECT.supabase.co",
-  "SUPABASE_ANON_KEY": "YOUR-ANON-KEY",
-  "OPENWEATHER_API_KEY": "YOUR-OPENWEATHER-KEY"
+  "SUPABASE_ANON_KEY": "YOUR-ANON-KEY"
 }
 ```
+
+Weather and UV data come from [Open-Meteo](https://open-meteo.com) and reverse geocoding from [BigDataCloud](https://www.bigdatacloud.com/free-api/free-reverse-geocode-to-city-api) — neither requires an API key.
 
 Apply the database migrations in `supabase/migrations/` to your Supabase project (e.g. `supabase db push`). The latest migration also creates the `delete_account()` RPC required for in-app account deletion.
 
@@ -53,8 +53,7 @@ Remaining items to do in App Store Connect / external services:
 2. Host the legal documents (sources in `assets/legal/`) on a public URL and set the Privacy Policy URL in App Store Connect.
 3. Fill out the App Privacy questionnaire (the app collects: email, name, precise location, health & fitness data — all linked to identity, none used for tracking).
 4. In the Supabase dashboard: add `io.supabase.sunbeam://login-callback/` to Auth → URL Configuration → Redirect URLs.
-5. Ensure `OPENWEATHER_API_KEY` is provided to all release builds — without it the app runs but shows "weather unavailable".
-6. Confirm the test accounts (`admin@sunbeam.com`, `user@sunbeam.com`) were removed from production by applying the latest migration.
+5. Confirm the test accounts (`admin@sunbeam.com`, `user@sunbeam.com`) were removed from production by applying the latest migration.
 
 ## Project structure
 
