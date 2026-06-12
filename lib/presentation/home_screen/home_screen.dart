@@ -178,18 +178,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
         // Resolve display location priority:
         // 1. Mobile geocoding (city + state via device)
-        // 2. OpenWeather Geo API (city + state, works on web)
-        // 3. OpenWeather current weather city field (city + country code)
-        // 4. Raw coordinates — absolute last resort
+        // 2. Reverse geocode API (city + state, works on web)
+        // 3. Raw coordinates — absolute last resort
         final geoAddress = locationData['address'] as String?;
-        final cityAddress = weatherData?['city_address'] as String?;
         final displayLocation = (geoAddress?.isNotEmpty == true)
             ? geoAddress!
             : (geoApiName?.isNotEmpty == true)
                 ? geoApiName!
-                : (cityAddress?.isNotEmpty == true)
-                    ? cityAddress!
-                    : '${lat.toStringAsFixed(3)}, ${lng.toStringAsFixed(3)}';
+                : '${lat.toStringAsFixed(3)}, ${lng.toStringAsFixed(3)}';
 
         setState(() => _currentLocation = displayLocation);
 

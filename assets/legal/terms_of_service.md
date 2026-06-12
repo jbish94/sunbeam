@@ -26,7 +26,7 @@ The app, including its design, text, and graphics, is owned by us or our licenso
 
 ## Third-Party Services
 
-The app relies on third-party services, including Supabase (data hosting and authentication) and OpenWeather (UV and weather data). We are not responsible for the availability or accuracy of third-party services.
+The app relies on third-party services, including Supabase (data hosting and authentication), Open-Meteo (UV and weather data), and BigDataCloud (place names). We are not responsible for the availability or accuracy of third-party services.
 
 ## Disclaimer of Warranties
 

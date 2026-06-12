@@ -23,8 +23,7 @@ We do not sell your personal information. We do not use your information for adv
 ## Third-Party Services
 
 - Supabase hosts our database and authentication service. Your account and session data are stored there, protected by row-level security so that only your account can access your data.
-- OpenWeather provides UV and weather data. Your approximate coordinates are sent to OpenWeather to retrieve conditions for your area; no account identifiers are shared with them.
-- Sign in with Apple, if you choose it, shares only the information you approve on the Apple consent screen.
+- Open-Meteo provides UV and weather data, and BigDataCloud provides place names. Your approximate coordinates are sent to these services to retrieve conditions for your area; no account identifiers are shared with them.
 
 ## Data Retention and Deletion
 
