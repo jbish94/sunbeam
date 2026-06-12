@@ -54,17 +54,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   List<Map<String, dynamic>> _hourlyUvData = [];
   Map<String, dynamic>? _sunWindow;
 
-  Map<String, dynamic> _currentWeatherData = {
-    'temperature': 78.0, // can be double; we’ll round when using
-    'cloudCover': '20%',
-    'windSpeed': '8 mph',
-    'humidity': '65%',
-    'uvIndex': 7.0,
-    'visibility': 'Good',
-    'precipitation': '0%',
-    'condition': 'Partly Sunny',
-    'description': 'Partly sunny',
-  };
+  // Null until a real fetch succeeds — the UI shows an explicit
+  // "unavailable" state instead of fabricated conditions.
+  Map<String, dynamic>? _currentWeatherData;
 
   final List<Map<String, dynamic>> educationArticles = [
     {
@@ -206,16 +198,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           setState(() {
             _currentWeatherData = {
               'temperature':
-                  (weatherData['temperature'] as num?)?.toDouble() ?? 78.0,
-              'cloudCover': '${weatherData['cloud_cover'] ?? 20}%',
+                  (weatherData['temperature'] as num?)?.toDouble() ?? 0.0,
+              'cloudCover': '${weatherData['cloud_cover'] ?? 0}%',
               'windSpeed':
-                  '${(weatherData['wind_speed'] as num?)?.toStringAsFixed(1) ?? '8'} mph',
-              'humidity': '${weatherData['humidity'] ?? 65}%',
-              'uvIndex': (weatherData['uv_index'] as num?)?.toDouble() ?? 7.0,
-              'visibility': 'Good',
-              'precipitation': '0%',
-              'condition': weatherData['weather_condition'] ?? 'Partly Sunny',
-              'description': weatherData['description'] ?? 'Partly sunny',
+                  '${(weatherData['wind_speed'] as num?)?.toStringAsFixed(1) ?? '0'} mph',
+              'humidity': '${weatherData['humidity'] ?? 0}%',
+              'uvIndex': (weatherData['uv_index'] as num?)?.toDouble() ?? 0.0,
+              'condition': weatherData['weather_condition'] ?? 'Unknown',
+              'description': weatherData['description'] ?? '',
             };
           });
         } else {
@@ -326,30 +316,34 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                           ),
                         ),
                       )
-                    else
+                    else if (_currentWeatherData != null)
                       WeatherBadgesWidget(
                         // 🔑 ensure we always give an int
                         temperature:
-                            ((_currentWeatherData['temperature'] as num?) ??
-                                    78)
+                            ((_currentWeatherData!['temperature'] as num?) ??
+                                    0)
                                 .round(),
                         cloudCover:
-                            _currentWeatherData['cloudCover'] as String? ??
-                                '20%',
+                            _currentWeatherData!['cloudCover'] as String? ??
+                                '--',
                         windSpeed:
-                            _currentWeatherData['windSpeed'] as String? ??
-                                '8 mph',
+                            _currentWeatherData!['windSpeed'] as String? ??
+                                '--',
                         humidity:
-                            _currentWeatherData['humidity'] as String? ??
-                                '65%',
-                      ),
+                            _currentWeatherData!['humidity'] as String? ??
+                                '--',
+                      )
+                    else
+                      _buildWeatherUnavailableCard(),
                     SizedBox(height: 1.h),
                     _buildDynamicSafetyRecommendations(),
-                    SizedBox(height: 1.h),
-                    EducationPillWidget(
-                      article: educationArticles[0],
-                      onDismiss: () {},
-                    ),
+                    if (educationArticles.isNotEmpty) ...[
+                      SizedBox(height: 1.h),
+                      EducationPillWidget(
+                        article: educationArticles[0],
+                        onDismiss: () {},
+                      ),
+                    ],
                     SizedBox(height: 10.h),
                   ],
                 ),
@@ -480,8 +474,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               ),
               SizedBox(width: 1.w),
               Text(
-                _currentWeatherData['condition'] as String? ??
-                    'Partly Sunny',
+                _currentWeatherData?['condition'] as String? ??
+                    (_isLoadingWeather ? 'Loading…' : 'Weather unavailable'),
                 style:
                     AppTheme.lightTheme.textTheme.bodyMedium?.copyWith(
                   color:
@@ -698,8 +692,41 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     ];
   }
 
+  Widget _buildWeatherUnavailableCard() {
+    return Container(
+      margin: EdgeInsets.symmetric(horizontal: 4.w),
+      padding: EdgeInsets.all(4.w),
+      decoration: BoxDecoration(
+        color: AppTheme.lightTheme.cardColor,
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        children: [
+          CustomIconWidget(
+            iconName: 'cloud_off',
+            color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+            size: 6.w,
+          ),
+          SizedBox(width: 3.w),
+          Expanded(
+            child: Text(
+              'Live weather is unavailable right now. Pull down to refresh.',
+              style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+                color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildDynamicSafetyRecommendations() {
-    final uv = (_currentWeatherData['uvIndex'] as num?)?.toDouble() ?? 0.0;
+    final uv = (_currentWeatherData?['uvIndex'] as num?)?.toDouble();
+    if (uv == null) {
+      // Don't show UV safety guidance based on data we don't have.
+      return const SizedBox.shrink();
+    }
     final rec = _uvRecommendations(uv);
     return SafetyRecommendationsWidget(
       spfRecommendation: rec['spf'] as String,
@@ -712,11 +739,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     if (uv < 1) {
       return {
         'level': 'Low',
-        'spf': 'No SPF needed — great time for sun exposure',
+        'spf': 'No SPF needed at this UV level',
         'measures': [
-          'Enjoy the sun freely',
+          'UV is minimal right now',
           'Stay hydrated',
-          'Good window for vitamin D synthesis',
+          'Time outdoors is low-risk for sunburn',
         ],
       };
     } else if (uv < 3) {

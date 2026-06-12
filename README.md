@@ -1,142 +1,71 @@
-# Flutter
+# Sunbeam ☀️
 
-A modern Flutter-based mobile application utilizing the latest mobile development technologies and tools for building responsive cross-platform applications. 
+A Flutter app for tracking sun exposure: live UV index and weather for your location, session logging with mood/energy tracking, goals, and insights. Backed by Supabase (auth + Postgres with row-level security) and OpenWeather.
 
-## 📋 Prerequisites
+## Prerequisites
 
-- Flutter SDK (^3.29.2)
-- Dart SDK
-- Android Studio / VS Code with Flutter extensions
-- Android SDK / Xcode (for iOS development)
+- Flutter SDK 3.29+ (stable channel)
+- Xcode (for iOS) / Android Studio (for Android)
+- A Supabase project (URL + anon key)
+- An OpenWeather API key (https://openweathermap.org/api) — the hourly UV chart additionally requires One Call API access
 
-## 🛠️ Installation
+## Configuration
 
-1. Install dependencies:
-```bash
-flutter pub get
-```
+All secrets are injected at build time via `--dart-define-from-file`. Copy the template and fill in your values (`env.json` is gitignored):
 
-2. Run the application:
-
-To run the app with environment variables defined in an env.json file, follow the steps mentioned below:
-1. Through CLI
-    ```bash
-    flutter run --dart-define-from-file=env.json
-    ```
-2. For VSCode
-    - Open .vscode/launch.json (create it if it doesn't exist).
-    - Add or modify your launch configuration to include --dart-define-from-file:
-    ```json
-    {
-        "version": "0.2.0",
-        "configurations": [
-            {
-                "name": "Launch",
-                "request": "launch",
-                "type": "dart",
-                "program": "lib/main.dart",
-                "args": [
-                    "--dart-define-from-file",
-                    "env.json"
-                ]
-            }
-        ]
-    }
-    ```
-3. For IntelliJ / Android Studio
-    - Go to Run > Edit Configurations.
-    - Select your Flutter configuration or create a new one.
-    - Add the following to the "Additional arguments" field:
-    ```bash
-    --dart-define-from-file=env.json
-    ```
-
-## 📁 Project Structure
-
-```
-flutter_app/
-├── android/            # Android-specific configuration
-├── ios/                # iOS-specific configuration
-├── lib/
-│   ├── core/           # Core utilities and services
-│   │   └── utils/      # Utility classes
-│   ├── presentation/   # UI screens and widgets
-│   │   └── splash_screen/ # Splash screen implementation
-│   ├── routes/         # Application routing
-│   ├── theme/          # Theme configuration
-│   ├── widgets/        # Reusable UI components
-│   └── main.dart       # Application entry point
-├── assets/             # Static assets (images, fonts, etc.)
-├── pubspec.yaml        # Project dependencies and configuration
-└── README.md           # Project documentation
-```
-
-## 🧩 Adding Routes
-
-To add new routes to the application, update the `lib/routes/app_routes.dart` file:
-
-```dart
-import 'package:flutter/material.dart';
-import 'package:package_name/presentation/home_screen/home_screen.dart';
-
-class AppRoutes {
-  static const String initial = '/';
-  static const String home = '/home';
-
-  static Map<String, WidgetBuilder> routes = {
-    initial: (context) => const SplashScreen(),
-    home: (context) => const HomeScreen(),
-    // Add more routes as needed
-  }
+```json
+{
+  "SUPABASE_URL": "https://YOUR-PROJECT.supabase.co",
+  "SUPABASE_ANON_KEY": "YOUR-ANON-KEY",
+  "OPENWEATHER_API_KEY": "YOUR-OPENWEATHER-KEY"
 }
 ```
 
-## 🎨 Theming
+Apply the database migrations in `supabase/migrations/` to your Supabase project (e.g. `supabase db push`). The latest migration also creates the `delete_account()` RPC required for in-app account deletion.
 
-This project includes a comprehensive theming system with both light and dark themes:
-
-```dart
-// Access the current theme
-ThemeData theme = Theme.of(context);
-
-// Use theme colors
-Color primaryColor = theme.colorScheme.primary;
-```
-
-The theme configuration includes:
-- Color schemes for light and dark modes
-- Typography styles
-- Button themes
-- Input decoration themes
-- Card and dialog themes
-
-## 📱 Responsive Design
-
-The app is built with responsive design using the Sizer package:
-
-```dart
-// Example of responsive sizing
-Container(
-  width: 50.w, // 50% of screen width
-  height: 20.h, // 20% of screen height
-  child: Text('Responsive Container'),
-)
-```
-## 📦 Deployment
-
-Build the application for production:
+## Running
 
 ```bash
-# For Android
-flutter build apk --release
-
-# For iOS
-flutter build ios --release
+flutter pub get
+flutter run --dart-define-from-file=env.json
 ```
 
-## 🙏 Acknowledgments
-- Built with [Rocket.new](https://rocket.new)
-- Powered by [Flutter](https://flutter.dev) & [Dart](https://dart.dev)
-- Styled with Material Design
+## Building for release
 
-Built with ❤️ on Rocket.new
+```bash
+# iOS (App Store)
+flutter build ipa --release --dart-define-from-file=env.json
+
+# Android
+flutter build appbundle --release --dart-define-from-file=env.json
+
+# Web (Vercel uses scripts/vercel_build.sh with env vars from project settings)
+flutter build web --release --dart-define-from-file=env.json
+```
+
+## App Store submission checklist
+
+Project-side items already configured: bundle ID `com.sunbeam.app`, app icons, privacy manifest (`PrivacyInfo.xcprivacy`), portrait-only orientation, location usage descriptions, deep-link scheme `io.supabase.sunbeam://login-callback/` for auth emails, in-app Privacy Policy / Terms / Medical Disclaimer, and in-app account deletion.
+
+Remaining items to do in App Store Connect / external services:
+
+1. Register the App ID `com.sunbeam.app` in your Apple Developer account and create the app in App Store Connect.
+2. Host the legal documents (sources in `assets/legal/`) on a public URL and set the Privacy Policy URL in App Store Connect.
+3. Fill out the App Privacy questionnaire (the app collects: email, name, precise location, health & fitness data — all linked to identity, none used for tracking).
+4. In the Supabase dashboard: add `io.supabase.sunbeam://login-callback/` to Auth → URL Configuration → Redirect URLs.
+5. Ensure `OPENWEATHER_API_KEY` is provided to all release builds — without it the app runs but shows "weather unavailable".
+6. Confirm the test accounts (`admin@sunbeam.com`, `user@sunbeam.com`) were removed from production by applying the latest migration.
+
+## Project structure
+
+```
+lib/
+├── core/             # Shared exports
+├── presentation/     # Screens and widgets (home, log session, insights, profile, …)
+├── routes/           # Route table (lib/routes/app_routes.dart)
+├── services/         # Supabase, location, weather, session services
+├── theme/            # Light/dark themes
+└── main.dart         # Entry point
+assets/legal/         # Privacy Policy, Terms, Medical Disclaimer (markdown)
+supabase/migrations/  # Database schema + RLS policies
+```

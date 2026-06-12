@@ -3,48 +3,31 @@ import 'package:sizer/sizer.dart';
 
 import '../../../core/app_export.dart';
 import '../../../theme/app_theme.dart';
+import '../../legal/legal_document_screen.dart';
 
 class PrivacyFooterWidget extends StatelessWidget {
   const PrivacyFooterWidget({Key? key}) : super(key: key);
 
   void _showTermsOfService(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Terms of Service'),
-        content: SingleChildScrollView(
-          child: Text(
-            'By using Sunbeam, you agree to our terms of service. We are committed to protecting your privacy and ensuring your data is secure.\n\nYour personal information is used solely to provide you with personalized sun exposure recommendations and wellness insights.',
-            style: AppTheme.lightTheme.textTheme.bodyMedium,
-          ),
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const LegalDocumentScreen(
+          title: 'Terms of Service',
+          assetPath: LegalDocumentScreen.termsOfServiceAsset,
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: Text('Close'),
-          ),
-        ],
       ),
     );
   }
 
   void _showPrivacyPolicy(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Privacy Policy'),
-        content: SingleChildScrollView(
-          child: Text(
-            'Your privacy is important to us. We collect minimal personal information necessary to provide our services.\n\nData Usage:\n• Your name and email for account creation\n• Location data for sun exposure recommendations\n• Usage patterns to improve our services\n\nWe do not share your personal information with third parties.',
-            style: AppTheme.lightTheme.textTheme.bodyMedium,
-          ),
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const LegalDocumentScreen(
+          title: 'Privacy Policy',
+          assetPath: LegalDocumentScreen.privacyPolicyAsset,
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: Text('Close'),
-          ),
-        ],
       ),
     );
   }

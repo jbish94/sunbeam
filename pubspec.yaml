@@ -47,11 +47,9 @@ dev_dependencies:
 flutter:
   uses-material-design: true
 
-  # Uncomment and adjust if you have assets
-  # assets:
-  #   - assets/
-  #   - assets/icons/
-  #   - assets/images/
+  assets:
+    - assets/images/
+    - assets/legal/
 
   # Uncomment / edit if you have custom fonts
   # fonts:

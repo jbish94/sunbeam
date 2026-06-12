@@ -1,19 +1,16 @@
-import 'dart:convert';
-import 'dart:io' if (dart.library.io) 'dart:io';
-
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
-import 'package:path_provider/path_provider.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sizer/sizer.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:universal_html/html.dart' as html;
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_export.dart';
 import '../../services/location_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/custom_icon_widget.dart';
+import '../legal/legal_document_screen.dart';
 import './age_range_edit_screen.dart';
 import './bmi_selection_screen.dart';
 import './burn_sensitivity_edit_screen.dart';
@@ -24,7 +21,6 @@ import './skin_type_edit_screen.dart';
 import './widgets/profile_header_widget.dart';
 import './widgets/settings_item_widget.dart';
 import './widgets/settings_section_widget.dart';
-import './widgets/subscription_card_widget.dart';
 import './widgets/toggle_item_widget.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -35,34 +31,24 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  // SUBSCRIPTION FEATURE FLAG - Set to false to hide subscription features
-  static const bool _showSubscriptionFeatures = false;
-
-  // EXPORT DATA FEATURE FLAG - Set to false to hide export data feature
-  static const bool _showExportDataFeature = false;
-
   int _selectedNavIndex = 3; // Set to profile tab
 
-  // User data - will be loaded from SharedPreferences
+  String _appVersion = '';
+
+  // User data - loaded from Supabase and SharedPreferences
   Map<String, dynamic> userData = {
     "name": "User",
     "email": "",
-    "location": "San Francisco, CA",
-    "accountStatus": "Pro",
+    "location": "Location not set",
+    "accountStatus": "Free",
     "skinType": "Type III - Light Brown",
     "burnSensitivity": 3,
     "ageRange": "25-34",
     "bmiRange": "18.5-24.9",
-    "timezone": "PST (GMT-8)",
+    "timezone": "Local time",
     "gpsAccuracy": "High",
-    // SUBSCRIPTION DATA - Hidden but preserved for future use
-    "subscriptionPlan": "Pro",
-    "subscriptionPrice": "\$3.99/month",
-    "subscriptionDescription":
-        "Unlimited UV tracking, advanced insights, and premium features",
-    "joinDate": "2024-01-15",
-    "totalSessions": 127,
-    "streakDays": 15,
+    "joinDate": "",
+    "totalSessions": 0,
   };
 
   // Settings state
@@ -74,6 +60,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void initState() {
     super.initState();
     _loadUserData();
+    _loadAppVersion();
+  }
+
+  Future<void> _loadAppVersion() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      if (mounted) setState(() => _appVersion = info.version);
+    } catch (_) {
+      // Version footer simply stays empty if unavailable.
+    }
   }
 
   Future<void> _loadUserData() async {
@@ -175,7 +171,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     try {
       await Supabase.instance.client.auth.signOut();
       if (mounted) {
-        Navigator.pushReplacementNamed(context, '/home-screen');
+        Navigator.pushReplacementNamed(context, AppRoutes.home);
       }
     } catch (e) {
       if (mounted) _showToast('Sign out failed. Please try again.');
@@ -219,16 +215,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
           children: [
             SizedBox(height: 2.h),
 
-            // Profile Header - Pass subscription visibility flag
             ProfileHeaderWidget(
               userName: userData["name"] as String,
               location:
                   userData["email"] as String? ??
                   userData["location"] as String,
-              accountStatus:
-                  _showSubscriptionFeatures
-                      ? userData["accountStatus"] as String
-                      : "Free",
+              accountStatus: userData["accountStatus"] as String,
               onEditPressed: _editName,
             ),
 
@@ -381,30 +373,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
             SizedBox(height: 2.h),
 
-            // SUBSCRIPTION STATUS - HIDDEN BUT PRESERVED
-            if (_showSubscriptionFeatures) ...[
-              SettingsSectionWidget(
-                title: 'Subscription',
-                children: [
-                  Container(
-                    padding: EdgeInsets.all(4.w),
-                    child: SubscriptionCardWidget(
-                      planName: userData["subscriptionPlan"] as String,
-                      planPrice: userData["subscriptionPrice"] as String,
-                      planDescription:
-                          userData["subscriptionDescription"] as String,
-                      isActive: userData["subscriptionPlan"] == "Pro",
-                      onUpgradePressed: _upgradeToPro,
-                      onManagePressed: _manageSubscription,
-                    ),
-                  ),
-                ],
-              ),
-              SizedBox(height: 2.h),
-            ],
-
-            SizedBox(height: 2.h),
-
             // Account Section
             if (Supabase.instance.client.auth.currentUser != null)
               SettingsSectionWidget(
@@ -419,28 +387,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ],
               ),
 
-            SizedBox(height: 2.h),
-
-            // Data Management Section
-            SettingsSectionWidget(
-              title: 'Data Management',
-              children: [
-                // EXPORT DATA FEATURE - Hidden but preserved for future use
-                if (_showExportDataFeature)
+            // Data Management Section (only relevant for signed-in users)
+            if (Supabase.instance.client.auth.currentUser != null) ...[
+              SizedBox(height: 2.h),
+              SettingsSectionWidget(
+                title: 'Data Management',
+                children: [
                   SettingsItemWidget(
-                    iconName: 'download',
-                    title: 'Export Data',
-                    subtitle: 'Download your sun exposure data as CSV file',
-                    onTap: _exportData,
+                    iconName: 'delete_forever',
+                    title: 'Delete Account',
+                    subtitle: 'Permanently delete your account and all data',
+                    onTap: _showDeleteAccountDialog,
                   ),
-                SettingsItemWidget(
-                  iconName: 'delete_forever',
-                  title: 'Delete Account',
-                  subtitle: 'Permanently delete your account and all data',
-                  onTap: _showDeleteAccountDialog,
-                ),
-              ],
-            ),
+                ],
+              ),
+            ],
 
             SizedBox(height: 2.h),
 
@@ -483,26 +444,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
               padding: EdgeInsets.all(4.w),
               child: Column(
                 children: [
-                  Text(
-                    'Sunbeam v1.2.0',
-                    style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
-                      color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+                  if (_appVersion.isNotEmpty)
+                    Text(
+                      'Sunbeam v$_appVersion',
+                      style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+                        color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+                      ),
                     ),
-                  ),
-                  SizedBox(height: 1.h),
-                  Text(
-                    'Member since ${_formatDate(userData["joinDate"] as String)}',
-                    style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
-                      color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+                  if ((userData["joinDate"] as String).isNotEmpty) ...[
+                    SizedBox(height: 1.h),
+                    Text(
+                      'Member since ${_formatDate(userData["joinDate"] as String)}',
+                      style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+                        color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+                      ),
                     ),
-                  ),
-                  SizedBox(height: 0.5.h),
-                  Text(
-                    '${userData["totalSessions"]} sessions logged • ${userData["streakDays"]} day streak',
-                    style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
-                      color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+                    SizedBox(height: 0.5.h),
+                    Text(
+                      '${userData["totalSessions"]} sessions logged',
+                      style: AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+                        color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+                      ),
                     ),
-                  ),
+                  ],
                 ],
               ),
             ),
@@ -706,18 +670,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  void _editGoals() {
-    // Mock current goals data - this would be loaded from storage in real app
-    Map<String, dynamic> currentGoals = {
-      'primary_goal_type': 'sessions_per_day',
-      'enable_secondary_goal': true,
-      'secondary_goal_type': 'minutes_per_session',
-      'sessions_per_day': 2,
-      'minutes_per_session': 15,
-      'sessions_per_week': 14,
-      'total_minutes_per_week': 210,
+  Future<void> _editGoals() async {
+    final prefs = await SharedPreferences.getInstance();
+    final currentGoals = {
+      'primary_goal_type':
+          prefs.getString('primary_goal_type') ?? 'sessions_per_day',
+      'enable_secondary_goal': prefs.getBool('enable_secondary_goal') ?? true,
+      'secondary_goal_type':
+          prefs.getString('secondary_goal_type') ?? 'minutes_per_session',
+      'sessions_per_day': prefs.getInt('sessions_per_day') ?? 2,
+      'minutes_per_session': prefs.getInt('minutes_per_session') ?? 15,
+      'sessions_per_week': prefs.getInt('sessions_per_week') ?? 14,
+      'total_minutes_per_week': prefs.getInt('total_minutes_per_week') ?? 210,
     };
 
+    if (!mounted) return;
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -725,62 +692,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
             (context) => GoalEditScreen(
               currentGoals: currentGoals,
               onGoalsChanged: (newGoals) {
+                // GoalEditScreen persists to SharedPreferences itself.
                 _showToast('Goals updated successfully');
-                // In real app, save to shared preferences or database here
               },
             ),
       ),
     );
-  }
-
-  // SUBSCRIPTION METHODS - PRESERVED FOR FUTURE USE
-  void _upgradeToPro() {
-    _showToast('Upgrade to Pro - Redirecting to subscription page');
-  }
-
-  void _manageSubscription() {
-    _showToast('Manage subscription - Redirecting to billing management');
-  }
-
-  // EXPORT DATA METHODS - PRESERVED FOR FUTURE USE
-  Future<void> _exportData() async {
-    try {
-      // Generate CSV data
-      final csvData = _generateCSVData();
-      final fileName =
-          'sunbeam_data_${DateTime.now().millisecondsSinceEpoch}.csv';
-
-      if (kIsWeb) {
-        // Web implementation
-        final bytes = utf8.encode(csvData);
-        final blob = html.Blob([bytes]);
-        final url = html.Url.createObjectUrlFromBlob(blob);
-        final anchor =
-            html.AnchorElement(href: url)
-              ..setAttribute("download", fileName)
-              ..click();
-        html.Url.revokeObjectUrl(url);
-        _showToast('Data exported successfully');
-      } else {
-        // Mobile implementation
-        final directory = await getApplicationDocumentsDirectory();
-        final file = File('${directory.path}/$fileName');
-        await file.writeAsString(csvData);
-        _showToast('Data exported to ${file.path}');
-      }
-    } catch (e) {
-      _showToast('Export failed. Please try again.');
-    }
-  }
-
-  String _generateCSVData() {
-    final header = 'Date,Duration,UV Index,Mood,Energy,Notes\n';
-    final sampleData = '''2024-10-29,15,6,4,4,Morning session in garden
-2024-10-28,20,7,5,5,Perfect weather conditions
-2024-10-27,12,5,3,4,Cloudy but still beneficial
-2024-10-26,18,8,4,5,Used SPF 30 sunscreen
-2024-10-25,25,6,5,4,Longer session felt great''';
-    return header + sampleData;
   }
 
   void _showDeleteAccountDialog() {
@@ -811,7 +728,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ElevatedButton(
               onPressed: () {
                 Navigator.of(context).pop();
-                _showToast('Account deletion initiated - Check your email');
+                _deleteAccount();
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppTheme.lightTheme.colorScheme.error,
@@ -830,20 +747,73 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  Future<void> _deleteAccount() async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      final client = Supabase.instance.client;
+      await client.rpc('delete_account');
+      await client.auth.signOut();
+
+      if (!mounted) return;
+      Navigator.of(context).pop(); // dismiss progress dialog
+      _showToast('Your account and data have been deleted');
+      Navigator.pushNamedAndRemoveUntil(
+        context,
+        AppRoutes.welcomeScreen,
+        (route) => false,
+      );
+    } catch (e) {
+      debugPrint('Error deleting account: $e');
+      if (!mounted) return;
+      Navigator.of(context).pop(); // dismiss progress dialog
+      _showToast('Account deletion failed. Please try again or contact support.');
+    }
+  }
+
+  void _openLegalDocument(String title, String assetPath) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) =>
+            LegalDocumentScreen(title: title, assetPath: assetPath),
+      ),
+    );
+  }
+
   void _openTermsOfService() {
-    _showToast('Opening Terms of Service in web view');
+    _openLegalDocument(
+        'Terms of Service', LegalDocumentScreen.termsOfServiceAsset);
   }
 
   void _openPrivacyPolicy() {
-    _showToast('Opening Privacy Policy in web view');
+    _openLegalDocument(
+        'Privacy Policy', LegalDocumentScreen.privacyPolicyAsset);
   }
 
   void _openMedicalDisclaimer() {
-    _showToast('Opening Medical Disclaimer in web view');
+    _openLegalDocument(
+        'Medical Disclaimer', LegalDocumentScreen.medicalDisclaimerAsset);
   }
 
-  void _contactSupport() {
-    _showToast('Opening support contact options');
+  Future<void> _contactSupport() async {
+    final uri = Uri(
+      scheme: 'mailto',
+      path: 'jordan@thesmallbizlab.com',
+      query: 'subject=Sunbeam Support',
+    );
+    try {
+      final launched = await launchUrl(uri);
+      if (!launched) {
+        _showToast('Email us at jordan@thesmallbizlab.com');
+      }
+    } catch (_) {
+      _showToast('Email us at jordan@thesmallbizlab.com');
+    }
   }
 
   String _formatDate(String dateString) {

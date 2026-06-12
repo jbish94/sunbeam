@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sizer/sizer.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../core/app_export.dart';
+import '../../services/session_service.dart';
+import '../../services/weather_service.dart';
 import './widgets/empty_notifications_widget.dart';
 import './widgets/notification_group_widget.dart';
 
@@ -24,63 +27,133 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
     _loadNotifications();
   }
 
+  /// Builds notifications from real app state: current UV conditions and
+  /// the user's session history vs. their goals. IDs are stable per day so
+  /// read/dismissed state persists across visits.
   Future<void> _loadNotifications() async {
-    await Future.delayed(Duration(milliseconds: 500)); // Simulate loading
+    final notifications = <Map<String, dynamic>>[];
+    final now = DateTime.now();
+    final dayKey =
+        '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}';
 
-    // Mock notifications data - in real app this would come from API/database
-    final notifications = [
-      {
-        'id': '1',
-        'type': 'sun_window',
-        'title': 'Optimal Sun Window Starting',
-        'description': 'Perfect time for 15-minute vitamin D session',
-        'timestamp': DateTime.now().subtract(Duration(minutes: 5)),
-        'isRead': false,
-        'icon': 'wb_sunny',
-        'iconColor': Colors.orange,
-      },
-      {
-        'id': '2',
-        'type': 'goal_achievement',
-        'title': 'Daily Goal Achieved! 🎉',
-        'description': 'You completed 2 sun sessions today',
-        'timestamp': DateTime.now().subtract(Duration(hours: 2)),
-        'isRead': false,
-        'icon': 'emoji_events',
-        'iconColor': Colors.amber,
-      },
-      {
-        'id': '3',
-        'type': 'missed_session',
-        'title': 'Missed Your Morning Session',
-        'description': 'Don\'t worry, there\'s still time for afternoon sun',
-        'timestamp': DateTime.now().subtract(Duration(hours: 4)),
-        'isRead': true,
-        'icon': 'schedule',
-        'iconColor': Colors.blue,
-      },
-      {
-        'id': '4',
-        'type': 'education',
-        'title': 'New Article: UV Safety Tips',
-        'description': 'Learn about protecting your skin during high UV days',
-        'timestamp': DateTime.now().subtract(Duration(days: 1)),
-        'isRead': true,
-        'icon': 'school',
-        'iconColor': Colors.green,
-      },
-      {
-        'id': '5',
-        'type': 'weather_alert',
-        'title': 'High UV Alert',
-        'description': 'UV index will be 9+ today. Use SPF 50+ sunscreen',
-        'timestamp': DateTime.now().subtract(Duration(days: 1, hours: 2)),
-        'isRead': true,
-        'icon': 'warning_amber',
-        'iconColor': Colors.red,
-      },
-    ];
+    try {
+      // Current UV conditions (uses the cached value fetched by Home).
+      final weather = WeatherService.instance.lastWeatherData;
+      final uvIndex = (weather?['uv_index'] as num?)?.toDouble();
+      if (uvIndex != null && uvIndex >= 8) {
+        notifications.add({
+          'id': 'uv_high_$dayKey',
+          'type': 'weather_alert',
+          'title': 'High UV Alert',
+          'description':
+              'UV index is ${uvIndex.toStringAsFixed(0)} right now. Limit time in direct sun and use protection.',
+          'timestamp': now,
+          'isRead': false,
+          'icon': 'warning_amber',
+          'iconColor': Colors.red,
+        });
+      } else if (uvIndex != null && uvIndex >= 3 && uvIndex <= 6) {
+        notifications.add({
+          'id': 'uv_window_$dayKey',
+          'type': 'sun_window',
+          'title': 'Moderate UV Conditions',
+          'description':
+              'UV index is ${uvIndex.toStringAsFixed(0)} — a reasonable window for a short, protected session.',
+          'timestamp': now,
+          'isRead': false,
+          'icon': 'wb_sunny',
+          'iconColor': Colors.orange,
+        });
+      }
 
+      // Session-based notifications require a signed-in user.
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user != null) {
+        final weekStart = now.subtract(const Duration(days: 7));
+        final sessions = await SessionService.instance
+            .getSessionHistory(startDate: weekStart, limit: 200);
+        final completed =
+            sessions.where((s) => s['status'] == 'completed').toList();
+
+        final today = DateTime(now.year, now.month, now.day);
+        final todaySessions = completed.where((s) {
+          final start = DateTime.tryParse(s['start_time'] as String? ?? '');
+          return start != null && !start.isBefore(today);
+        }).length;
+
+        final prefs = await SharedPreferences.getInstance();
+        final dailyGoal = prefs.getInt('sessions_per_day') ?? 2;
+
+        if (todaySessions >= dailyGoal && dailyGoal > 0) {
+          notifications.add({
+            'id': 'goal_done_$dayKey',
+            'type': 'goal_achievement',
+            'title': 'Daily Goal Achieved! 🎉',
+            'description':
+                'You completed $todaySessions session${todaySessions == 1 ? '' : 's'} today',
+            'timestamp': now,
+            'isRead': false,
+            'icon': 'emoji_events',
+            'iconColor': Colors.amber,
+          });
+        } else if (todaySessions > 0) {
+          notifications.add({
+            'id': 'goal_progress_$dayKey',
+            'type': 'goal_progress',
+            'title': 'Goal Progress',
+            'description':
+                '$todaySessions of $dailyGoal sessions logged today — keep it up!',
+            'timestamp': now,
+            'isRead': false,
+            'icon': 'track_changes',
+            'iconColor': Colors.green,
+          });
+        } else if (now.hour >= 12) {
+          notifications.add({
+            'id': 'no_session_$dayKey',
+            'type': 'missed_session',
+            'title': 'No Session Logged Today',
+            'description':
+                'There may still be time for a short session — check today\'s UV conditions first.',
+            'timestamp': now,
+            'isRead': false,
+            'icon': 'schedule',
+            'iconColor': Colors.blue,
+          });
+        }
+
+        if (completed.isNotEmpty) {
+          final weeklyMinutes = completed.fold<int>(
+              0, (sum, s) => sum + ((s['duration_minutes'] as int?) ?? 0));
+          notifications.add({
+            'id': 'weekly_summary_$dayKey',
+            'type': 'weekly_summary',
+            'title': 'Your Week in the Sun',
+            'description':
+                '${completed.length} session${completed.length == 1 ? '' : 's'} and $weeklyMinutes minutes logged in the last 7 days',
+            'timestamp': now.subtract(const Duration(hours: 1)),
+            'isRead': false,
+            'icon': 'insights',
+            'iconColor': Colors.teal,
+          });
+        }
+      }
+
+      // Apply persisted read/dismissed state.
+      final prefs = await SharedPreferences.getInstance();
+      final readIds = prefs.getStringList('read_notification_ids') ?? [];
+      final dismissedIds =
+          prefs.getStringList('dismissed_notification_ids') ?? [];
+      notifications
+          .removeWhere((n) => dismissedIds.contains(n['id'] as String));
+      for (final n in notifications) {
+        if (readIds.contains(n['id'] as String)) n['isRead'] = true;
+      }
+    } catch (e) {
+      debugPrint('Error building notifications: $e');
+    }
+
+    if (!mounted) return;
     setState(() {
       _notifications = notifications;
       _unreadCount = notifications.where((n) => !(n['isRead'] as bool)).length;
@@ -127,10 +200,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       _unreadCount = 0;
     });
 
-    // In real app, sync with backend
     final prefs = await SharedPreferences.getInstance();
-    final readIds = _notifications.map((n) => n['id'] as String).toList();
-    await prefs.setStringList('read_notification_ids', readIds);
+    final readIds =
+        (prefs.getStringList('read_notification_ids') ?? []).toSet();
+    readIds.addAll(_notifications.map((n) => n['id'] as String));
+    await prefs.setStringList('read_notification_ids', readIds.toList());
   }
 
   Future<void> _markAsRead(String notificationId) async {
@@ -177,10 +251,6 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
       _isLoading = true;
     });
     await _loadNotifications();
-    // Add haptic feedback
-    if (Theme.of(context).platform == TargetPlatform.iOS) {
-      // iOS haptic feedback would be implemented here
-    }
   }
 
   @override
