@@ -22,7 +22,6 @@ class SunWindowCardWidget extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      height: 25.h,
       margin: EdgeInsets.symmetric(horizontal: 4.w, vertical: 2.h),
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -45,6 +44,7 @@ class SunWindowCardWidget extends StatelessWidget {
       child: Padding(
         padding: EdgeInsets.all(4.w),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
@@ -54,7 +54,7 @@ class SunWindowCardWidget extends StatelessWidget {
                 fontWeight: FontWeight.w600,
               ),
             ),
-            SizedBox(height: 3.h),
+            SizedBox(height: 2.5.h),
             Row(
               children: [
                 Expanded(
@@ -111,9 +111,10 @@ class SunWindowCardWidget extends StatelessWidget {
                 ),
               ],
             ),
-            SizedBox(height: 2.h),
+            SizedBox(height: 2.5.h),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
