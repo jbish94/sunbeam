@@ -19,8 +19,23 @@ class HourlyUvChartWidget extends StatefulWidget {
 class _HourlyUvChartWidgetState extends State<HourlyUvChartWidget> {
   int? touchedIndex;
 
+  /// Limits the chart to daylight-relevant hours (6AM-9PM) so the
+  /// overnight zero-UV tail doesn't waste width. Entries without a
+  /// `dt` (placeholder data) are kept as-is.
+  List<Map<String, dynamic>> get _displayData {
+    final filtered = widget.hourlyData.where((h) {
+      final dt = h['dt'];
+      if (dt is DateTime) return dt.hour >= 6 && dt.hour <= 21;
+      return true;
+    }).toList();
+    return filtered.isEmpty ? widget.hourlyData : filtered;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final data = _displayData;
+    // Aim for ~6 x-axis labels regardless of how many points we have.
+    final labelInterval = (data.length / 6).ceil().clamp(1, 24);
     return Container(
       width: double.infinity,
       height: 30.h,
@@ -60,7 +75,7 @@ class _HourlyUvChartWidgetState extends State<HourlyUvChartWidget> {
           Expanded(
             child: Semantics(
               label:
-                  "Hourly UV Index Chart showing today's UV levels from 6 AM to 8 PM",
+                  "Hourly UV Index Chart showing today's UV levels throughout the day",
               child: LineChart(
                 LineChartData(
                   gridData: FlGridData(
@@ -86,14 +101,19 @@ class _HourlyUvChartWidgetState extends State<HourlyUvChartWidget> {
                       sideTitles: SideTitles(
                         showTitles: true,
                         reservedSize: 30,
-                        interval: 2,
+                        interval: labelInterval.toDouble(),
                         getTitlesWidget: (double value, TitleMeta meta) {
                           final hour = value.toInt();
-                          if (hour >= 0 && hour < widget.hourlyData.length) {
+                          // Skip the forced edge label fl_chart renders at
+                          // maxX — it collides with its neighbour.
+                          if (hour % labelInterval != 0) {
+                            return const SizedBox.shrink();
+                          }
+                          if (hour >= 0 && hour < data.length) {
                             return SideTitleWidget(
                               axisSide: meta.axisSide,
                               child: Text(
-                                widget.hourlyData[hour]['time'] as String,
+                                data[hour]['time'] as String,
                                 style: AppTheme.lightTheme.textTheme.bodySmall
                                     ?.copyWith(
                                   fontSize: 10.sp,
@@ -133,7 +153,7 @@ class _HourlyUvChartWidgetState extends State<HourlyUvChartWidget> {
                     ),
                   ),
                   minX: 0,
-                  maxX: (widget.hourlyData.length - 1).toDouble(),
+                  maxX: (data.length - 1).toDouble(),
                   minY: 0,
                   maxY: 12,
                   lineTouchData: LineTouchData(
@@ -178,10 +198,10 @@ class _HourlyUvChartWidgetState extends State<HourlyUvChartWidget> {
                         return touchedBarSpots.map((barSpot) {
                           final flSpot = barSpot;
                           final index = flSpot.x.toInt();
-                          if (index >= 0 && index < widget.hourlyData.length) {
-                            final data = widget.hourlyData[index];
+                          if (index >= 0 && index < data.length) {
+                            final point = data[index];
                             return LineTooltipItem(
-                              '${data['time']}\nUV: ${flSpot.y.toInt()}\n${data['temp']}°F',
+                              '${point['time']}\nUV: ${flSpot.y.toInt()}\n${point['temp']}°F',
                               TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.w600,
@@ -196,7 +216,7 @@ class _HourlyUvChartWidgetState extends State<HourlyUvChartWidget> {
                   ),
                   lineBarsData: [
                     LineChartBarData(
-                      spots: widget.hourlyData.asMap().entries.map((entry) {
+                      spots: data.asMap().entries.map((entry) {
                         return FlSpot(
                           entry.key.toDouble(),
                           (entry.value['uvIndex'] as num).toDouble(),
