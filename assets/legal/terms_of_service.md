@@ -1,6 +1,6 @@
 # Terms of Service
 
-Effective date: June 12, 2026
+Effective date: July 14, 2026
 
 These Terms of Service ("Terms") govern your use of the Sunbeam mobile application ("the app"). By using the app, you agree to these Terms.
 
@@ -26,7 +26,7 @@ The app, including its design, text, and graphics, is owned by us or our licenso
 
 ## Third-Party Services
 
-The app relies on third-party services, including Supabase (data hosting and authentication), Open-Meteo (UV and weather data), and BigDataCloud (place names). We are not responsible for the availability or accuracy of third-party services.
+The app relies on third-party services, including Supabase (data hosting and authentication), Open-Meteo (weather and UV data), the U.S. EPA UV index service (UV forecasts for U.S. locations), and BigDataCloud (place names). We are not responsible for the availability or accuracy of third-party services.
 
 ## Disclaimer of Warranties
 
