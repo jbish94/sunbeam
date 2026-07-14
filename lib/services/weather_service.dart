@@ -332,7 +332,7 @@ class WeatherService {
       _getForecast(latitude, longitude),
       _getEpaUvByHour(latitude, longitude),
     ]);
-    final forecast = results[0] as Map<String, dynamic>?;
+    final forecast = results[0];
     final epaUv = results[1] as Map<String, double>?;
     if (forecast == null) return null;
 
@@ -368,7 +368,7 @@ class WeatherService {
       _getForecast(latitude, longitude),
       _getEpaUvByHour(latitude, longitude),
     ]);
-    final forecast = results[0] as Map<String, dynamic>?;
+    final forecast = results[0];
     final epaUv = results[1] as Map<String, double>?;
     if (forecast == null) return null;
 

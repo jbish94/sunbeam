@@ -27,7 +27,6 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   int _selectedIndex = 0;
-  bool _isRefreshing = false;
   bool _isLoadingWeather = false;
   String _currentLocation = 'Fetching location...';
 
@@ -1139,11 +1138,9 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _handleRefresh() async {
-    setState(() => _isRefreshing = true);
     await Future.wait([
       _updateLocationAndWeather(),
       _loadSessionProgress(),
     ]);
-    setState(() => _isRefreshing = false);
   }
 }

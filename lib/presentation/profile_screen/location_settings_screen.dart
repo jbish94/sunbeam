@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:fluttertoast/fluttertoast.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -7,9 +6,6 @@ import 'package:sizer/sizer.dart';
 import '../../core/app_export.dart';
 import '../../services/location_service.dart';
 import '../../services/weather_service.dart';
-import '../../theme/app_theme.dart';
-import '../../widgets/custom_icon_widget.dart';
-import './widgets/settings_item_widget.dart';
 import './widgets/settings_section_widget.dart';
 import './widgets/toggle_item_widget.dart';
 
