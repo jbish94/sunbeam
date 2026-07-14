@@ -8,6 +8,12 @@ import '../services/location_service.dart';
 /// Open-Meteo requires no API key and provides current conditions,
 /// current UV index, and an hourly UV forecast in a single request.
 /// Reverse geocoding uses BigDataCloud's free client endpoint.
+///
+/// For US locations, UV values are overridden with the EPA/NWS hourly
+/// UV forecast (no key required): Open-Meteo's CAMS-derived UV can read
+/// ~25% low in the US Southwest (e.g. 8.8 vs EPA's 11 for Mesa, AZ),
+/// which is unsafe for an app recommending sun exposure. Open-Meteo
+/// remains the fallback outside the US or if the EPA call fails.
 class WeatherService {
   static WeatherService? _instance;
   static WeatherService get instance => _instance ??= WeatherService._();
@@ -18,6 +24,8 @@ class WeatherService {
       'https://api.bigdatacloud.net/data/reverse-geocode-client';
   static const String _geocodingSearchUrl =
       'https://geocoding-api.open-meteo.com/v1/search';
+  static const String _epaUvUrl =
+      'https://data.epa.gov/efservice/getEnvirofactsUVHOURLY/ZIP';
 
   // Raw forecast response cache (one network call serves current weather,
   // UV index, and the hourly chart).
@@ -96,6 +104,128 @@ class WeatherService {
       return null;
     }
   }
+
+  // ---------- EPA UV forecast (US only) ----------
+
+  // Cached EPA hourly UV, keyed by local hour ("2026-7-14-13"). A null
+  // map is also cached (non-US location or fetch failure) so every
+  // refresh doesn't retry a lookup that can't succeed.
+  Map<String, double>? _epaUvByHour;
+  double? _epaLat;
+  double? _epaLng;
+  DateTime? _epaFetchedAt;
+  Future<Map<String, double>?>? _inflightEpaFetch;
+  static const int _epaCacheMinutes = 60;
+
+  bool _isEpaCacheValid(double latitude, double longitude) {
+    if (_epaFetchedAt == null || _epaLat == null || _epaLng == null) {
+      return false;
+    }
+    if ((latitude - _epaLat!).abs() > 0.01 ||
+        (longitude - _epaLng!).abs() > 0.01) {
+      return false;
+    }
+    return DateTime.now().difference(_epaFetchedAt!).inMinutes <
+        _epaCacheMinutes;
+  }
+
+  Future<Map<String, double>?> _getEpaUvByHour(
+      double latitude, double longitude) async {
+    if (_isEpaCacheValid(latitude, longitude)) return _epaUvByHour;
+
+    final inflight = _inflightEpaFetch;
+    if (inflight != null) return inflight;
+
+    final fetch = _fetchEpaUv(latitude, longitude);
+    _inflightEpaFetch = fetch;
+    try {
+      return await fetch;
+    } finally {
+      _inflightEpaFetch = null;
+    }
+  }
+
+  Future<Map<String, double>?> _fetchEpaUv(
+      double latitude, double longitude) async {
+    _epaLat = latitude;
+    _epaLng = longitude;
+    _epaFetchedAt = DateTime.now();
+    _epaUvByHour = null;
+
+    final zip = await _getUsZip(latitude, longitude);
+    if (zip == null) return null;
+
+    try {
+      final response = await http
+          .get(Uri.parse('$_epaUvUrl/$zip/JSON'))
+          .timeout(const Duration(seconds: 8));
+      if (response.statusCode != 200) {
+        debugPrint('[WeatherService] EPA UV: ${response.statusCode}');
+        return null;
+      }
+      final records = json.decode(response.body) as List;
+      final byHour = <String, double>{};
+      for (final record in records.whereType<Map<String, dynamic>>()) {
+        final dt = _parseEpaDateTime(record['DATE_TIME'] as String?);
+        final uv = (record['UV_VALUE'] as num?)?.toDouble();
+        if (dt == null || uv == null) continue;
+        byHour[_hourKey(dt)] = uv;
+      }
+      if (byHour.isEmpty) return null;
+      _epaUvByHour = byHour;
+      debugPrint(
+          '[WeatherService] EPA UV loaded for ZIP $zip (${byHour.length} hours)');
+      return byHour;
+    } catch (e) {
+      debugPrint('[WeatherService] EPA UV error: $e');
+      return null;
+    }
+  }
+
+  /// Resolves coordinates to a 5-digit US ZIP, or null outside the US.
+  Future<String?> _getUsZip(double latitude, double longitude) async {
+    try {
+      final url = Uri.parse(_reverseGeocodeUrl).replace(queryParameters: {
+        'latitude': latitude.toString(),
+        'longitude': longitude.toString(),
+        'localityLanguage': 'en',
+      });
+      final response =
+          await http.get(url).timeout(const Duration(seconds: 8));
+      if (response.statusCode != 200) return null;
+      final data = json.decode(response.body) as Map<String, dynamic>;
+      if (data['countryCode'] != 'US') return null;
+      final postcode = ((data['postcode'] as String?) ?? '').trim();
+      final zip =
+          postcode.length >= 5 ? postcode.substring(0, 5) : postcode;
+      return RegExp(r'^\d{5}$').hasMatch(zip) ? zip : null;
+    } catch (e) {
+      debugPrint('[WeatherService] ZIP lookup error: $e');
+      return null;
+    }
+  }
+
+  /// EPA DATE_TIME format: "Jul/14/2026 01 PM" (local to the ZIP).
+  DateTime? _parseEpaDateTime(String? raw) {
+    if (raw == null) return null;
+    final match =
+        RegExp(r'^([A-Za-z]{3})/(\d{1,2})/(\d{4})\s+(\d{1,2})\s+(AM|PM)$')
+            .firstMatch(raw.trim());
+    if (match == null) return null;
+    const months = {
+      'JAN': 1, 'FEB': 2, 'MAR': 3, 'APR': 4, 'MAY': 5, 'JUN': 6,
+      'JUL': 7, 'AUG': 8, 'SEP': 9, 'OCT': 10, 'NOV': 11, 'DEC': 12,
+    };
+    final month = months[match.group(1)!.toUpperCase()];
+    if (month == null) return null;
+    var hour = int.parse(match.group(4)!) % 12;
+    if (match.group(5) == 'PM') hour += 12;
+    return DateTime(
+        int.parse(match.group(3)!), month, int.parse(match.group(2)!), hour);
+  }
+
+  String _hourKey(DateTime dt) =>
+      '${dt.year}-${dt.month}-${dt.day}-${dt.hour}';
 
   Map<String, dynamic> _parseCurrentWeather(Map<String, dynamic> data) {
     final current = (data['current'] as Map<String, dynamic>?) ?? {};
@@ -195,15 +325,35 @@ class WeatherService {
 
   Future<Map<String, dynamic>?> getCurrentWeather(
       double latitude, double longitude) async {
-    final forecast = await _getForecast(latitude, longitude);
+    final results = await Future.wait([
+      _getForecast(latitude, longitude),
+      _getEpaUvByHour(latitude, longitude),
+    ]);
+    final forecast = results[0] as Map<String, dynamic>?;
+    final epaUv = results[1] as Map<String, double>?;
     if (forecast == null) return null;
-    return _parseCurrentWeather(forecast);
+
+    final weather = _parseCurrentWeather(forecast);
+
+    // Override with the EPA value for the current hour, keyed on the
+    // location's local time (from Open-Meteo) so it also works when a
+    // manual location is in another timezone.
+    final currentTime = DateTime.tryParse(
+            (forecast['current'] as Map<String, dynamic>?)?['time']
+                    as String? ??
+                '') ??
+        DateTime.now();
+    final epaNow = epaUv?[_hourKey(currentTime)];
+    if (epaNow != null) {
+      weather['uv_index'] = epaNow;
+      weather['uv_source'] = 'EPA';
+    }
+    return weather;
   }
 
   Future<double?> getUVIndex(double latitude, double longitude) async {
-    final forecast = await _getForecast(latitude, longitude);
-    final current = forecast?['current'] as Map<String, dynamic>?;
-    return (current?['uv_index'] as num?)?.toDouble();
+    final weather = await getCurrentWeather(latitude, longitude);
+    return (weather?['uv_index'] as num?)?.toDouble();
   }
 
   /// Returns today's hourly UV + temperature data.
@@ -211,7 +361,12 @@ class WeatherService {
   /// `uvIndex` (double), `temp` (int, °F).
   Future<List<Map<String, dynamic>>?> getHourlyUvForecast(
       double latitude, double longitude) async {
-    final forecast = await _getForecast(latitude, longitude);
+    final results = await Future.wait([
+      _getForecast(latitude, longitude),
+      _getEpaUvByHour(latitude, longitude),
+    ]);
+    final forecast = results[0] as Map<String, dynamic>?;
+    final epaUv = results[1] as Map<String, double>?;
     if (forecast == null) return null;
 
     try {
@@ -226,10 +381,13 @@ class WeatherService {
           i++) {
         final dt = DateTime.tryParse(times[i]);
         if (dt == null) continue;
+        // EPA/NWS value wins when available (US locations); both series
+        // are in the location's local time so the hour keys line up.
+        final openMeteoUv = (uvValues[i] as num?)?.toDouble() ?? 0.0;
         result.add({
           'dt': dt,
           'time': _formatHour(dt),
-          'uvIndex': (uvValues[i] as num?)?.toDouble() ?? 0.0,
+          'uvIndex': epaUv?[_hourKey(dt)] ?? openMeteoUv,
           'temp': ((temps[i] as num?)?.toDouble() ?? 0.0).round(),
         });
       }
