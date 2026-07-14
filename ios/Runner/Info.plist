@@ -60,5 +60,10 @@
 	<string>Sunbeam needs your location to provide accurate UV index data, weather information, and optimal sun exposure recommendations for your area.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>Sunbeam needs your location to track sun exposure sessions and provide location-based UV safety recommendations.</string>
+	<key>NSLocationTemporaryUsageDescriptionDictionary</key>
+	<dict>
+		<key>PreciseLocation</key>
+		<string>Sunbeam uses your precise location to show the UV index and weather for your exact city, not just the surrounding area.</string>
+	</dict>
 </dict>
 </plist>

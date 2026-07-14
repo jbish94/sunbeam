@@ -16,6 +16,8 @@ class WeatherService {
   static const String _forecastUrl = 'https://api.open-meteo.com/v1/forecast';
   static const String _reverseGeocodeUrl =
       'https://api.bigdatacloud.net/data/reverse-geocode-client';
+  static const String _geocodingSearchUrl =
+      'https://geocoding-api.open-meteo.com/v1/search';
 
   // Raw forecast response cache (one network call serves current weather,
   // UV index, and the hourly chart).
@@ -265,7 +267,10 @@ class WeatherService {
           return (v != null && v.isNotEmpty) ? v : null;
         }
 
-        final city = nonEmpty('city') ?? nonEmpty('locality');
+        // Prefer 'locality' (the actual place, e.g. "Mesa") over 'city'
+        // (often the nearest major city, e.g. "Phoenix") so suburbs
+        // aren't mislabeled with the metro's principal city.
+        final city = nonEmpty('locality') ?? nonEmpty('city');
         final region = nonEmpty('principalSubdivision');
         final country = nonEmpty('countryName');
         if (city != null && region != null) return '$city, $region';
@@ -277,6 +282,51 @@ class WeatherService {
     } catch (e) {
       debugPrint('[WeatherService] getLocationName error: $e');
       return null;
+    }
+  }
+
+  /// Searches for places by name using Open-Meteo's free geocoding API
+  /// (no key required, works on web). Returns matches with display name,
+  /// coordinates, and IANA timezone — used for the manual location
+  /// override in Location Settings.
+  Future<List<Map<String, dynamic>>> searchLocations(String query,
+      {int count = 5}) async {
+    final trimmed = query.trim();
+    if (trimmed.length < 2) return [];
+    try {
+      final url = Uri.parse(_geocodingSearchUrl).replace(queryParameters: {
+        'name': trimmed,
+        'count': count.toString(),
+        'language': 'en',
+        'format': 'json',
+      });
+      final response =
+          await http.get(url).timeout(const Duration(seconds: 8));
+      if (response.statusCode != 200) {
+        debugPrint(
+            '[WeatherService] Geocoding search: ${response.statusCode}');
+        return [];
+      }
+      final data = json.decode(response.body) as Map<String, dynamic>;
+      final results = (data['results'] as List?) ?? [];
+      return results
+          .whereType<Map<String, dynamic>>()
+          .where((r) =>
+              r['name'] != null &&
+              r['latitude'] != null &&
+              r['longitude'] != null)
+          .map((r) => {
+                'name': r['name'] as String,
+                'region': r['admin1'] as String?,
+                'country': r['country'] as String?,
+                'latitude': (r['latitude'] as num).toDouble(),
+                'longitude': (r['longitude'] as num).toDouble(),
+                'timezone': r['timezone'] as String?,
+              })
+          .toList();
+    } catch (e) {
+      debugPrint('[WeatherService] searchLocations error: $e');
+      return [];
     }
   }
 

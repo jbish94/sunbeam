@@ -1,5 +1,6 @@
 import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter/foundation.dart';
 
@@ -9,6 +10,17 @@ class LocationService {
   LocationService._internal();
 
   static const _locationTimeout = Duration(seconds: 12);
+
+  /// Fixes with an error radius above this are too coarse for city-level
+  /// display (a ~5 km fix can put a Mesa user in Phoenix) and trigger a
+  /// best-accuracy retry.
+  static const double acceptableAccuracyMeters = 1000;
+
+  // SharedPreferences keys shared with the settings UI.
+  static const String prefHighPrecisionGps = 'high_precision_gps';
+  static const String prefLastFixAccuracy = 'last_fix_accuracy_m';
+  static const String prefLastFixAt = 'last_fix_at';
+  static const String prefManualLocation = 'manual_location';
 
   // ---------- Permissions / settings ----------
 
@@ -22,6 +34,18 @@ class LocationService {
 
   Future<void> openAppSettings() {
     return Geolocator.openAppSettings();
+  }
+
+  /// Passive permission check — never shows a prompt.
+  Future<bool> hasLocationPermission() async {
+    try {
+      final permission = await Geolocator.checkPermission();
+      return permission == LocationPermission.always ||
+          permission == LocationPermission.whileInUse;
+    } catch (e) {
+      debugPrint('❌ [LocationService] Error checking permission: $e');
+      return false;
+    }
   }
 
   Future<bool> requestLocationPermission() async {
@@ -72,17 +96,109 @@ class LocationService {
         return null;
       }
 
-      debugPrint('🔍 [LocationService] Getting current position...');
-      final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-        timeLimit: _locationTimeout,
-      );
-      debugPrint('✅ [LocationService] Position obtained: ${position.latitude}, ${position.longitude}');
+      // iOS: if the user granted only approximate location, ask for
+      // temporary full accuracy — an approximate fix (~5 km) resolves to
+      // the wrong city.
+      await _ensurePreciseAccuracy();
+
+      final prefs = await SharedPreferences.getInstance();
+      final highPrecision = prefs.getBool(prefHighPrecisionGps) ?? true;
+      final accuracy =
+          highPrecision ? LocationAccuracy.best : LocationAccuracy.medium;
+
+      debugPrint(
+          '🔍 [LocationService] Getting current position (accuracy: $accuracy)...');
+      var position = await _getPosition(accuracy);
+
+      // A coarse fix in balanced mode gets one retry at best accuracy
+      // before we trust it for city-level display.
+      if (position != null &&
+          position.accuracy > acceptableAccuracyMeters &&
+          accuracy != LocationAccuracy.best) {
+        debugPrint(
+            '⚠️ [LocationService] Coarse fix (±${position.accuracy.round()} m) — retrying at best accuracy...');
+        final retry = await _getPosition(LocationAccuracy.best);
+        if (retry != null && retry.accuracy < position.accuracy) {
+          position = retry;
+        }
+      }
+
+      // Timed out or failed — fall back to the last known position
+      // rather than returning nothing.
+      position ??= await _getLastKnownPosition();
+
+      if (position == null) {
+        debugPrint('❌ [LocationService] No position available');
+        return null;
+      }
+
+      if (position.accuracy > acceptableAccuracyMeters) {
+        debugPrint(
+            '⚠️ [LocationService] Accepting coarse fix: ±${position.accuracy.round()} m — displayed city may be approximate');
+      }
+
+      // Record fix quality so the settings screen can show real status.
+      await prefs.setDouble(prefLastFixAccuracy, position.accuracy);
+      await prefs.setString(
+          prefLastFixAt, DateTime.now().toIso8601String());
+
+      debugPrint(
+          '✅ [LocationService] Position obtained: ${position.latitude}, ${position.longitude} (±${position.accuracy.round()} m)');
       return position;
     } catch (e) {
       debugPrint('❌ [LocationService] Error getting current location: $e');
       debugPrint('❌ [LocationService] Stack trace: ${StackTrace.current}');
       return null;
+    }
+  }
+
+  Future<Position?> _getPosition(LocationAccuracy accuracy) async {
+    try {
+      return await Geolocator.getCurrentPosition(
+        locationSettings: LocationSettings(
+          accuracy: accuracy,
+          timeLimit: _locationTimeout,
+        ),
+      );
+    } catch (e) {
+      debugPrint('⚠️ [LocationService] getCurrentPosition failed: $e');
+      return null;
+    }
+  }
+
+  Future<Position?> _getLastKnownPosition() async {
+    if (kIsWeb) return null; // not supported on web
+    try {
+      final position = await Geolocator.getLastKnownPosition();
+      if (position != null) {
+        debugPrint('ℹ️ [LocationService] Using last known position');
+      }
+      return position;
+    } catch (e) {
+      debugPrint('⚠️ [LocationService] getLastKnownPosition failed: $e');
+      return null;
+    }
+  }
+
+  /// On iOS 14+, users can grant location while disabling "Precise
+  /// Location". Detect that and request temporary full accuracy so UV
+  /// data matches the user's actual city.
+  Future<void> _ensurePreciseAccuracy() async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.iOS) return;
+    try {
+      var status = await Geolocator.getLocationAccuracy();
+      if (status == LocationAccuracyStatus.reduced) {
+        debugPrint(
+            '⚠️ [LocationService] Precise Location is off — requesting temporary full accuracy...');
+        status = await Geolocator.requestTemporaryFullAccuracy(
+            purposeKey: 'PreciseLocation');
+        if (status == LocationAccuracyStatus.reduced) {
+          debugPrint(
+              '⚠️ [LocationService] Still reduced accuracy — city may be approximate. Enable Precise Location in Settings for exact results.');
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ [LocationService] Accuracy status check failed: $e');
     }
   }
 
@@ -111,6 +227,45 @@ class LocationService {
   Future<String?> getTimezone(double lat, double lng) async {
     // Simple fallback: device timezone name.
     return DateTime.now().timeZoneName;
+  }
+
+  /// Formats a timezone for display. Accepts an IANA id
+  /// ("America/Phoenix"), an abbreviation ("MST"), or null. Abbreviations
+  /// and null fall back to the device's real UTC offset, so this never
+  /// degrades to a bare "Local Time".
+  static String formatTimezoneLabel(String? timezone) {
+    const ianaMapping = <String, String>{
+      'America/Phoenix': 'MST (GMT-7)',
+      'America/Denver': 'MDT (GMT-6)',
+      'America/Los_Angeles': 'PT (GMT-8/-7)',
+      'America/New_York': 'ET (GMT-5/-4)',
+      'America/Chicago': 'CT (GMT-6/-5)',
+      'Europe/London': 'UK (GMT+0/+1)',
+      'Europe/Berlin': 'CET (GMT+1/+2)',
+      'Asia/Tokyo': 'JST (GMT+9)',
+      'Australia/Sydney': 'AET (GMT+10/+11)',
+      'UTC': 'UTC (GMT+0)',
+    };
+    if (timezone != null && ianaMapping.containsKey(timezone)) {
+      return ianaMapping[timezone]!;
+    }
+    // Unmapped IANA id (manual city selection) — show it as-is; the
+    // device offset would be wrong for a remote city.
+    if (timezone != null && timezone.contains('/')) return timezone;
+
+    // Abbreviation or null: pair the device's zone name with its offset.
+    final now = DateTime.now();
+    final offset = now.timeZoneOffset;
+    final sign = offset.isNegative ? '-' : '+';
+    final hours = offset.inHours.abs();
+    final minutes = offset.inMinutes.abs() % 60;
+    final gmt = minutes == 0
+        ? 'GMT$sign$hours'
+        : 'GMT$sign$hours:${minutes.toString().padLeft(2, '0')}';
+    final name = (timezone != null && timezone.isNotEmpty)
+        ? timezone
+        : now.timeZoneName;
+    return '$name ($gmt)';
   }
 
   // ---------- Safe Supabase access ----------

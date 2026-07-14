@@ -156,6 +156,22 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     setState(() => _isLoadingWeather = true);
 
     try {
+      final prefs = await SharedPreferences.getInstance();
+
+      // Manual override set in Location Settings takes priority over GPS.
+      if (prefs.getBool(LocationService.prefManualLocation) ?? false) {
+        final lat = prefs.getDouble('user_latitude');
+        final lng = prefs.getDouble('user_longitude');
+        final name = prefs.getString('user_location');
+        if (lat != null && lng != null) {
+          debugPrint(
+              '📍 [HomeScreen] Using manual location: $name ($lat, $lng)');
+          setState(() => _currentLocation = name ?? 'Saved location');
+          await _loadWeatherData(lat, lng);
+          return;
+        }
+      }
+
       debugPrint('📍 [HomeScreen] Calling fetchAndSaveLocation...');
       final locationData = await _locationService.fetchAndSaveLocation();
       debugPrint('📍 [HomeScreen] Location data received: ${locationData != null ? "SUCCESS" : "NULL"}');
@@ -165,59 +181,31 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         final lng = (locationData['longitude'] as num).toDouble();
         debugPrint('📍 [HomeScreen] Coordinates: $lat, $lng');
 
-        debugPrint('📍 [HomeScreen] Fetching weather data...');
-        final results = await Future.wait([
-          _weatherService.getCompleteWeatherData(lat, lng),
-          _weatherService.getHourlyUvForecast(lat, lng),
-          _weatherService.getLocationName(lat, lng),
-        ]);
-
-        final weatherData = results[0] as Map<String, dynamic>?;
-        final hourlyData = results[1] as List<Map<String, dynamic>>?;
-        final geoApiName = results[2] as String?;
-
         // Resolve display location priority:
         // 1. Mobile geocoding (city + state via device)
         // 2. Reverse geocode API (city + state, works on web)
         // 3. Raw coordinates — absolute last resort
-        final geoAddress = locationData['address'] as String?;
-        final displayLocation = (geoAddress?.isNotEmpty == true)
-            ? geoAddress!
-            : (geoApiName?.isNotEmpty == true)
-                ? geoApiName!
-                : '${lat.toStringAsFixed(3)}, ${lng.toStringAsFixed(3)}';
-
-        setState(() => _currentLocation = displayLocation);
-
-        if (weatherData != null) {
-          debugPrint('📍 [HomeScreen] Weather data received successfully');
-          setState(() {
-            _currentWeatherData = {
-              'temperature':
-                  (weatherData['temperature'] as num?)?.toDouble() ?? 0.0,
-              'cloudCover': '${weatherData['cloud_cover'] ?? 0}%',
-              'windSpeed':
-                  '${(weatherData['wind_speed'] as num?)?.toStringAsFixed(1) ?? '0'} mph',
-              'humidity': '${weatherData['humidity'] ?? 0}%',
-              'uvIndex': (weatherData['uv_index'] as num?)?.toDouble() ?? 0.0,
-              'condition': weatherData['weather_condition'] ?? 'Unknown',
-              'description': weatherData['description'] ?? '',
-            };
-          });
-        } else {
-          debugPrint('⚠️ [HomeScreen] Weather data is null');
+        String? displayLocation = locationData['address'] as String?;
+        if (displayLocation == null || displayLocation.isEmpty) {
+          displayLocation = await _weatherService.getLocationName(lat, lng);
         }
 
-        if (hourlyData != null && hourlyData.isNotEmpty) {
-          debugPrint(
-              '📍 [HomeScreen] Hourly UV data: ${hourlyData.length} points');
-          setState(() {
-            _hourlyUvData = hourlyData;
-            _sunWindow = _computeSunWindow(hourlyData);
-          });
+        if (displayLocation != null && displayLocation.isNotEmpty) {
+          // Keep the profile/settings pages in sync with what home shows.
+          await prefs.setString('user_location', displayLocation);
+          await prefs.setString(
+              'user_timezone',
+              LocationService.formatTimezoneLabel(
+                  locationData['timezone'] as String?));
+          await prefs.setDouble('user_latitude', lat);
+          await prefs.setDouble('user_longitude', lng);
         } else {
-          debugPrint('⚠️ [HomeScreen] Hourly UV data unavailable');
+          displayLocation =
+              '${lat.toStringAsFixed(3)}, ${lng.toStringAsFixed(3)}';
         }
+
+        setState(() => _currentLocation = displayLocation!);
+        await _loadWeatherData(lat, lng);
       } else {
         // Location fetch failed - update UI with appropriate message
         debugPrint('❌ [HomeScreen] Location data is null - check permissions');
@@ -233,6 +221,47 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     } finally {
       setState(() => _isLoadingWeather = false);
       debugPrint('📍 [HomeScreen] Location and weather update completed');
+    }
+  }
+
+  Future<void> _loadWeatherData(double lat, double lng) async {
+    debugPrint('📍 [HomeScreen] Fetching weather data...');
+    final results = await Future.wait([
+      _weatherService.getCompleteWeatherData(lat, lng),
+      _weatherService.getHourlyUvForecast(lat, lng),
+    ]);
+
+    final weatherData = results[0] as Map<String, dynamic>?;
+    final hourlyData = results[1] as List<Map<String, dynamic>>?;
+
+    if (weatherData != null) {
+      debugPrint('📍 [HomeScreen] Weather data received successfully');
+      setState(() {
+        _currentWeatherData = {
+          'temperature':
+              (weatherData['temperature'] as num?)?.toDouble() ?? 0.0,
+          'cloudCover': '${weatherData['cloud_cover'] ?? 0}%',
+          'windSpeed':
+              '${(weatherData['wind_speed'] as num?)?.toStringAsFixed(1) ?? '0'} mph',
+          'humidity': '${weatherData['humidity'] ?? 0}%',
+          'uvIndex': (weatherData['uv_index'] as num?)?.toDouble() ?? 0.0,
+          'condition': weatherData['weather_condition'] ?? 'Unknown',
+          'description': weatherData['description'] ?? '',
+        };
+      });
+    } else {
+      debugPrint('⚠️ [HomeScreen] Weather data is null');
+    }
+
+    if (hourlyData != null && hourlyData.isNotEmpty) {
+      debugPrint(
+          '📍 [HomeScreen] Hourly UV data: ${hourlyData.length} points');
+      setState(() {
+        _hourlyUvData = hourlyData;
+        _sunWindow = _computeSunWindow(hourlyData);
+      });
+    } else {
+      debugPrint('⚠️ [HomeScreen] Hourly UV data unavailable');
     }
   }
 
