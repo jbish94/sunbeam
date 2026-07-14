@@ -9,6 +9,7 @@ import '../../core/app_export.dart';
 import '../../routes/app_routes.dart';
 import '../../services/location_service.dart';
 import '../../services/weather_service.dart';
+import './widgets/current_uv_card_widget.dart';
 import './widgets/education_pill_widget.dart';
 import './widgets/goal_progress_card_widget.dart';
 import './widgets/hourly_uv_chart_widget.dart';
@@ -321,6 +322,12 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _buildHeader(),
+                    SizedBox(height: 1.h),
+                    CurrentUvCardWidget(
+                      uvIndex:
+                          (_currentWeatherData?['uvIndex'] as num?)?.toDouble(),
+                      isLoading: _isLoadingWeather,
+                    ),
                     SizedBox(height: 2.h),
                     _buildGoalProgressSection(),
                     SizedBox(height: 2.h),
