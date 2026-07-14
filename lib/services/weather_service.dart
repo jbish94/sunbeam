@@ -1,8 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import '../services/supabase_service.dart';
-import '../services/location_service.dart';
 
 /// Weather + UV data backed by Open-Meteo (https://open-meteo.com).
 /// Open-Meteo requires no API key and provides current conditions,
@@ -496,81 +494,6 @@ class WeatherService {
   Future<Map<String, dynamic>?> getCompleteWeatherData(
       double latitude, double longitude) async {
     return getCurrentWeather(latitude, longitude);
-  }
-
-  Future<String?> saveWeatherToSupabase(
-    Map<String, dynamic> weatherData,
-    String locationId,
-  ) async {
-    try {
-      final client = SupabaseService.instance.client;
-      final user = client.auth.currentUser;
-
-      if (user == null) {
-        throw Exception('User not authenticated');
-      }
-
-      final response = await client
-          .from('weather_data')
-          .insert({
-            'user_id': user.id,
-            'location_id': locationId,
-            'temperature': weatherData['temperature'],
-            'feels_like': weatherData['feels_like'],
-            'humidity': weatherData['humidity'],
-            'pressure': weatherData['pressure'],
-            'visibility': weatherData['visibility'],
-            'uv_index': weatherData['uv_index'],
-            'cloud_cover': weatherData['cloud_cover'],
-            'wind_speed': weatherData['wind_speed'],
-            'wind_direction': weatherData['wind_direction'],
-            'weather_condition': weatherData['weather_condition'],
-            'description': weatherData['description'],
-            'icon_code': weatherData['icon_code'],
-            'sunrise': weatherData['sunrise']?.toIso8601String(),
-            'sunset': weatherData['sunset']?.toIso8601String(),
-            'data_source': 'open-meteo',
-            'recorded_at': DateTime.now().toIso8601String(),
-          })
-          .select('id')
-          .single();
-
-      return response['id'] as String;
-    } catch (e) {
-      debugPrint('Error saving weather data to Supabase: $e');
-      return null;
-    }
-  }
-
-  Future<Map<String, dynamic>?> getWeatherForCurrentLocation() async {
-    try {
-      final position = await LocationService.instance.getCurrentLocation();
-      if (position == null) {
-        debugPrint('Could not get current location');
-        return null;
-      }
-      return await getCompleteWeatherData(
-          position.latitude, position.longitude);
-    } catch (e) {
-      debugPrint('Error getting weather for current location: $e');
-      return null;
-    }
-  }
-
-  String getUVSafetyLevel(double uvIndex) {
-    if (uvIndex <= 2) return 'Low';
-    if (uvIndex <= 5) return 'Moderate';
-    if (uvIndex <= 7) return 'High';
-    if (uvIndex <= 10) return 'Very High';
-    return 'Extreme';
-  }
-
-  void clearCache() {
-    _lastForecast = null;
-    _lastWeatherData = null;
-    _lastLat = null;
-    _lastLng = null;
-    _lastUpdateTime = null;
   }
 
   Map<String, dynamic>? get lastWeatherData => _lastWeatherData;

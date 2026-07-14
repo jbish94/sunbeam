@@ -72,6 +72,37 @@ class _HourlyUvChartWidgetState extends State<HourlyUvChartWidget> {
             ],
           ),
           SizedBox(height: 2.h),
+          if (data.isEmpty)
+            Expanded(
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CustomIconWidget(
+                      iconName: 'cloud_off',
+                      color: AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+                      size: 32,
+                    ),
+                    SizedBox(height: 1.h),
+                    Text(
+                      'UV forecast unavailable',
+                      style: AppTheme.lightTheme.textTheme.bodyMedium
+                          ?.copyWith(fontWeight: FontWeight.w500),
+                    ),
+                    SizedBox(height: 0.5.h),
+                    Text(
+                      'Pull down to refresh',
+                      style:
+                          AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
+                        color:
+                            AppTheme.lightTheme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
           Expanded(
             child: Semantics(
               label:

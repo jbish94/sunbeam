@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/app_export.dart';
 import '../../services/location_service.dart';
+import '../../services/notification_service.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/custom_icon_widget.dart';
 import '../legal/legal_document_screen.dart';
@@ -54,13 +55,68 @@ class _ProfileScreenState extends State<ProfileScreen> {
   // Settings state
   bool _optimalWindowAlerts = true;
   bool _missedSessionReminders = true;
-  bool _educationalContent = false;
+  bool _educationalContent = true;
 
   @override
   void initState() {
     super.initState();
     _loadUserData();
     _loadAppVersion();
+    _loadNotificationPreferences();
+  }
+
+  Future<void> _loadNotificationPreferences() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _optimalWindowAlerts =
+          prefs.getBool(NotificationService.prefOptimalWindowAlerts) ?? true;
+      _missedSessionReminders =
+          prefs.getBool(NotificationService.prefMissedSessionReminders) ??
+              true;
+      _educationalContent =
+          prefs.getBool(NotificationService.prefEducationalContent) ?? true;
+    });
+  }
+
+  Future<void> _setOptimalWindowAlerts(bool value) async {
+    setState(() => _optimalWindowAlerts = value);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(NotificationService.prefOptimalWindowAlerts, value);
+    if (value) {
+      final granted = await NotificationService.instance.requestPermissions();
+      _showToast(granted
+          ? 'Optimal window alerts enabled'
+          : 'Enable notifications in system settings to receive alerts');
+    } else {
+      await NotificationService.instance.cancelOptimalWindowAlert();
+      _showToast('Optimal window alerts disabled');
+    }
+  }
+
+  Future<void> _setMissedSessionReminders(bool value) async {
+    setState(() => _missedSessionReminders = value);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(
+        NotificationService.prefMissedSessionReminders, value);
+    if (value) {
+      final granted = await NotificationService.instance.requestPermissions();
+      await NotificationService.instance.scheduleMissedSessionReminder();
+      _showToast(granted
+          ? 'Missed session reminders enabled'
+          : 'Enable notifications in system settings to receive reminders');
+    } else {
+      await NotificationService.instance.cancelMissedSessionReminder();
+      _showToast('Missed session reminders disabled');
+    }
+  }
+
+  Future<void> _setEducationalContent(bool value) async {
+    setState(() => _educationalContent = value);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(NotificationService.prefEducationalContent, value);
+    _showToast(
+        'Educational content ${value ? 'enabled' : 'hidden on home screen'}');
   }
 
   Future<void> _loadAppVersion() async {
@@ -330,14 +386,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   subtitle:
                       'Get notified 30-60 minutes before your optimal sun exposure window',
                   value: _optimalWindowAlerts,
-                  onChanged: (value) {
-                    setState(() {
-                      _optimalWindowAlerts = value;
-                    });
-                    _showToast(
-                      'Optimal window alerts ${value ? 'enabled' : 'disabled'}',
-                    );
-                  },
+                  onChanged: _setOptimalWindowAlerts,
                 ),
                 ToggleItemWidget(
                   iconName: 'notifications',
@@ -345,28 +394,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   subtitle:
                       'Gentle nudges with alternative suggestions when you miss a window',
                   value: _missedSessionReminders,
-                  onChanged: (value) {
-                    setState(() {
-                      _missedSessionReminders = value;
-                    });
-                    _showToast(
-                      'Missed session reminders ${value ? 'enabled' : 'disabled'}',
-                    );
-                  },
+                  onChanged: _setMissedSessionReminders,
                 ),
                 ToggleItemWidget(
                   iconName: 'school',
                   title: 'Educational Content',
-                  subtitle: 'Receive UV safety tips and wellness insights',
+                  subtitle:
+                      'Show UV safety tips and insights on the home screen',
                   value: _educationalContent,
-                  onChanged: (value) {
-                    setState(() {
-                      _educationalContent = value;
-                    });
-                    _showToast(
-                      'Educational content ${value ? 'enabled' : 'disabled'}',
-                    );
-                  },
+                  onChanged: _setEducationalContent,
                 ),
               ],
             ),

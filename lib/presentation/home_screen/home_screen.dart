@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/app_export.dart';
 import '../../routes/app_routes.dart';
 import '../../services/location_service.dart';
+import '../../services/notification_service.dart';
 import '../../services/weather_service.dart';
 import './widgets/current_uv_card_widget.dart';
 import './widgets/education_pill_widget.dart';
@@ -60,6 +61,10 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   // "unavailable" state instead of fabricated conditions.
   Map<String, dynamic>? _currentWeatherData;
 
+  // One article is featured per day (rotates by day of year); dismissing
+  // hides the card until tomorrow.
+  bool _showEducationPill = false;
+
   final List<Map<String, dynamic>> educationArticles = [
     {
       "id": 1,
@@ -71,6 +76,46 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       "content":
           "The UV Index measures the strength of ultraviolet radiation. Aim for sun exposure when UV Index is between 3–6, typically early morning or late afternoon."
     },
+    {
+      "id": 2,
+      "title": "Vitamin D and Sunlight: How Much Do You Really Need?",
+      "category": "Wellness",
+      "summary":
+          "Short, regular sessions beat long weekend exposure for vitamin D production.",
+      "readTime": 3,
+      "content":
+          "Your skin produces vitamin D most efficiently in short sessions — typically 10–20 minutes with arms and legs exposed, depending on skin type and UV level. Production plateaus quickly, so longer exposure adds burn risk without adding much vitamin D."
+    },
+    {
+      "id": 3,
+      "title": "Sunscreen Myths: What SPF Numbers Actually Mean",
+      "category": "UV Safety",
+      "summary":
+          "SPF 50 isn't twice as protective as SPF 25 — here's how it really works.",
+      "readTime": 2,
+      "content":
+          "SPF 30 blocks about 97% of UVB rays; SPF 50 blocks about 98%. The bigger factors are applying enough (most people use half the tested amount) and reapplying every two hours or after swimming or sweating."
+    },
+    {
+      "id": 4,
+      "title": "Why Cloud Cover Doesn't Mean Zero UV",
+      "category": "UV Safety",
+      "summary":
+          "Up to 80% of UV radiation passes through light cloud cover.",
+      "readTime": 2,
+      "content":
+          "Clouds scatter visible light more than ultraviolet. Light or scattered clouds can let most UV through — and reflection off cloud edges can occasionally push ground-level UV above clear-sky values. Check the UV index, not the sky."
+    },
+    {
+      "id": 5,
+      "title": "Skin Type and Burn Time: Know Your Baseline",
+      "category": "Wellness",
+      "summary":
+          "The same UV index affects different skin types very differently.",
+      "readTime": 3,
+      "content":
+          "At UV index 8, very fair skin (Type I) can begin to burn in under 10 minutes, while deeply pigmented skin (Type VI) may tolerate 40+ minutes. Set your skin type in your profile so Sunbeam's recommendations match your baseline."
+    },
   ];
 
   @override
@@ -79,6 +124,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _loadGoalSettings();
     _loadSessionProgress();
     _initializeLocationAndWeather();
+    _loadEducationPillState();
 
     // The sun window and its countdown depend on the current time, so
     // recompute every minute — otherwise the card freezes at whatever
@@ -129,6 +175,8 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           .from('sun_sessions')
           .select('start_time, duration_minutes')
           .eq('user_id', user.id)
+          // Match Insights: only completed sessions count toward goals.
+          .eq('status', 'completed')
           .gte('start_time', weekStart.toIso8601String());
 
       int sessionsToday = 0, minutesToday = 0;
@@ -152,6 +200,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           'sessions_this_week': sessionsWeek,
           'minutes_this_week': minutesWeek,
         });
+      }
+
+      // Keep the midday reminder honest: schedule it only while no
+      // session is logged today, clear it once one is.
+      if (sessionsToday == 0) {
+        NotificationService.instance.scheduleMissedSessionReminder();
+      } else {
+        NotificationService.instance.cancelMissedSessionReminder();
       }
     } catch (e) {
       debugPrint('[HomeScreen] Failed to load session progress: $e');
@@ -271,9 +327,22 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
         _hourlyUvData = hourlyData;
         _sunWindow = _computeSunWindow(hourlyData);
       });
+      _scheduleSunWindowAlert();
     } else {
       debugPrint('⚠️ [HomeScreen] Hourly UV data unavailable');
     }
+  }
+
+  /// Schedules (or replaces) the local notification for the upcoming
+  /// sun window. NotificationService itself checks the user's toggle.
+  void _scheduleSunWindowAlert() {
+    final w = _sunWindow;
+    final startDt = w?['startDt'] as DateTime?;
+    if (w == null || startDt == null) return;
+    NotificationService.instance.scheduleOptimalWindowAlert(
+      windowStart: startDt,
+      windowLabel: '${w['startTime']}–${w['endTime']}',
+    );
   }
 
   Future<void> _loadGoalSettings() async {
@@ -343,11 +412,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                     SizedBox(height: 2.h),
                     _buildDynamicSunWindowCard(),
                     SizedBox(height: 1.h),
-                    HourlyUvChartWidget(
-                      hourlyData: _hourlyUvData.isNotEmpty
-                          ? _hourlyUvData
-                          : _placeholderUvData(),
-                    ),
+                    HourlyUvChartWidget(hourlyData: _hourlyUvData),
                     SizedBox(height: 1.h),
                     if (_isLoadingWeather)
                       Center(
@@ -379,11 +444,11 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                       _buildWeatherUnavailableCard(),
                     SizedBox(height: 1.h),
                     _buildDynamicSafetyRecommendations(),
-                    if (educationArticles.isNotEmpty) ...[
+                    if (_showEducationPill && educationArticles.isNotEmpty) ...[
                       SizedBox(height: 1.h),
                       EducationPillWidget(
-                        article: educationArticles[0],
-                        onDismiss: () {},
+                        article: _todaysArticle,
+                        onDismiss: _dismissEducationPill,
                       ),
                     ],
                     SizedBox(height: 10.h),
@@ -724,16 +789,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
   /// Minimal placeholder while live UV data is loading so the chart
   /// doesn't render with zero data points.
-  List<Map<String, dynamic>> _placeholderUvData() {
-    return [
-      {'time': '6AM', 'uvIndex': 0, 'temp': 65},
-      {'time': '9AM', 'uvIndex': 0, 'temp': 68},
-      {'time': '12PM', 'uvIndex': 0, 'temp': 72},
-      {'time': '3PM', 'uvIndex': 0, 'temp': 70},
-      {'time': '6PM', 'uvIndex': 0, 'temp': 66},
-    ];
-  }
-
   Widget _buildWeatherUnavailableCard() {
     return Container(
       margin: EdgeInsets.symmetric(horizontal: 4.w),
@@ -1026,6 +1081,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     return {
       'startTime': windowStart['time'] as String,
       'endTime': (windowEnd ?? windowStart)['time'] as String,
+      'startDt': startDt,
       'recommendedMinutes': recommendedMins,
       'countdownText': countdown,
     };
@@ -1036,6 +1092,32 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
       return '${d.inHours}h ${d.inMinutes.remainder(60)}m';
     }
     return '${d.inMinutes}m';
+  }
+
+  // ---------- Education pill ----------
+
+  Map<String, dynamic> get _todaysArticle {
+    final now = DateTime.now();
+    final dayOfYear = now.difference(DateTime(now.year)).inDays;
+    return educationArticles[dayOfYear % educationArticles.length];
+  }
+
+  String get _todayKey =>
+      DateTime.now().toIso8601String().substring(0, 10);
+
+  Future<void> _loadEducationPillState() async {
+    final prefs = await SharedPreferences.getInstance();
+    final enabled =
+        prefs.getBool(NotificationService.prefEducationalContent) ?? true;
+    final dismissedOn = prefs.getString('education_pill_dismissed_on');
+    if (!mounted) return;
+    setState(() => _showEducationPill = enabled && dismissedOn != _todayKey);
+  }
+
+  Future<void> _dismissEducationPill() async {
+    setState(() => _showEducationPill = false);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('education_pill_dismissed_on', _todayKey);
   }
 
   String _getGreeting() {

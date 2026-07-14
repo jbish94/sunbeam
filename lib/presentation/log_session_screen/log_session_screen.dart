@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:sizer/sizer.dart';
 
 import '../../core/app_export.dart';
+import '../../services/notification_service.dart';
 import '../../services/session_service.dart';
 import '../../services/weather_service.dart';
 import './widgets/duration_picker_widget.dart';
@@ -332,6 +333,12 @@ class _LogSessionScreenState extends State<LogSessionScreen> {
         energyBefore: _energyLevel.round(),
         notes: _notes,
       );
+
+      if (sessionId != null) {
+        // A session is logged — today's "no session yet" reminder no
+        // longer applies.
+        NotificationService.instance.cancelMissedSessionReminder();
+      }
 
       if (!mounted) return;
 
