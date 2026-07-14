@@ -51,7 +51,7 @@ class NotificationService {
           requestSoundPermission: false,
         ),
       );
-      await _plugin.initialize(settings);
+      await _plugin.initialize(settings: settings);
       _initialized = true;
       debugPrint('[NotificationService] Initialized');
     } catch (e) {
@@ -108,11 +108,11 @@ class NotificationService {
 
     try {
       await _plugin.zonedSchedule(
-        _idOptimalWindow,
-        'Your Sun Window Opens Soon ☀️',
-        'Optimal UV conditions $windowLabel — time to get ready.',
-        tz.TZDateTime.from(fireAt, tz.local),
-        const NotificationDetails(
+        id: _idOptimalWindow,
+        title: 'Your Sun Window Opens Soon ☀️',
+        body: 'Optimal UV conditions $windowLabel — time to get ready.',
+        scheduledDate: tz.TZDateTime.from(fireAt, tz.local),
+        notificationDetails: const NotificationDetails(
           android: AndroidNotificationDetails(
             'sun_window',
             'Sun Window Alerts',
@@ -134,7 +134,7 @@ class NotificationService {
 
   Future<void> cancelOptimalWindowAlert() async {
     if (kIsWeb || !_initialized) return;
-    await _plugin.cancel(_idOptimalWindow);
+    await _plugin.cancel(id: _idOptimalWindow);
   }
 
   /// Schedules today's 12:30 PM "no session logged yet" reminder.
@@ -155,11 +155,12 @@ class NotificationService {
 
     try {
       await _plugin.zonedSchedule(
-        _idMissedSession,
-        'No Sun Session Yet Today',
-        'There may still be time — check today\'s UV conditions for a short session.',
-        tz.TZDateTime.from(fireAt, tz.local),
-        const NotificationDetails(
+        id: _idMissedSession,
+        title: 'No Sun Session Yet Today',
+        body:
+            'There may still be time — check today\'s UV conditions for a short session.',
+        scheduledDate: tz.TZDateTime.from(fireAt, tz.local),
+        notificationDetails: const NotificationDetails(
           android: AndroidNotificationDetails(
             'session_reminders',
             'Session Reminders',
@@ -181,6 +182,6 @@ class NotificationService {
 
   Future<void> cancelMissedSessionReminder() async {
     if (kIsWeb || !_initialized) return;
-    await _plugin.cancel(_idMissedSession);
+    await _plugin.cancel(id: _idMissedSession);
   }
 }
