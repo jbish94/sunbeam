@@ -34,6 +34,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   final WeatherService _weatherService = WeatherService.instance;
 
   StreamSubscription<AuthState>? _authSubscription;
+  Timer? _sunWindowTimer;
 
   Map<String, dynamic> userGoals = {
     'primary_goal_type': 'sessions_per_day',
@@ -79,6 +80,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
     _loadSessionProgress();
     _initializeLocationAndWeather();
 
+    // The sun window and its countdown depend on the current time, so
+    // recompute every minute — otherwise the card freezes at whatever
+    // was true when the forecast loaded.
+    _sunWindowTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (!mounted || _hourlyUvData.isEmpty) return;
+      setState(() => _sunWindow = _computeSunWindow(_hourlyUvData));
+    });
+
     // React to sign-in / sign-out without requiring a restart
     _authSubscription = Supabase.instance.client.auth.onAuthStateChange.listen(
       (data) {
@@ -93,6 +102,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
   @override
   void dispose() {
     _authSubscription?.cancel();
+    _sunWindowTimer?.cancel();
     super.dispose();
   }
 

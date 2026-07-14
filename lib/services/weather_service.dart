@@ -147,15 +147,11 @@ class WeatherService {
 
   Future<Map<String, double>?> _fetchEpaUv(
       double latitude, double longitude) async {
-    _epaLat = latitude;
-    _epaLng = longitude;
-    _epaFetchedAt = DateTime.now();
-    _epaUvByHour = null;
-
-    final zip = await _getUsZip(latitude, longitude);
-    if (zip == null) return null;
-
+    Map<String, double>? byHour;
     try {
+      final zip = await _getUsZip(latitude, longitude);
+      if (zip == null) return null;
+
       final response = await http
           .get(Uri.parse('$_epaUvUrl/$zip/JSON'))
           .timeout(const Duration(seconds: 8));
@@ -164,21 +160,30 @@ class WeatherService {
         return null;
       }
       final records = json.decode(response.body) as List;
-      final byHour = <String, double>{};
+      final parsed = <String, double>{};
       for (final record in records.whereType<Map<String, dynamic>>()) {
         final dt = _parseEpaDateTime(record['DATE_TIME'] as String?);
         final uv = (record['UV_VALUE'] as num?)?.toDouble();
         if (dt == null || uv == null) continue;
-        byHour[_hourKey(dt)] = uv;
+        parsed[_hourKey(dt)] = uv;
       }
-      if (byHour.isEmpty) return null;
-      _epaUvByHour = byHour;
+      if (parsed.isEmpty) return null;
+      byHour = parsed;
       debugPrint(
           '[WeatherService] EPA UV loaded for ZIP $zip (${byHour.length} hours)');
       return byHour;
     } catch (e) {
       debugPrint('[WeatherService] EPA UV error: $e');
       return null;
+    } finally {
+      // Stamp the cache only once the outcome is known. Stamping before
+      // the fetch let a concurrent caller (getCurrentWeather and
+      // getHourlyUvForecast run in parallel) see a "valid" cache that
+      // still held null and silently fall back to Open-Meteo UV.
+      _epaLat = latitude;
+      _epaLng = longitude;
+      _epaFetchedAt = DateTime.now();
+      _epaUvByHour = byHour;
     }
   }
 
