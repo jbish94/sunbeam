@@ -194,6 +194,9 @@ class _InsightsScreenState extends State<InsightsScreen>
           'uvExposure': 0.0,
           '_moodCount': 0,
           '_energyCount': 0,
+          // Numeric, year-aware sort key: lexicographic label sorting
+          // puts "W10" before "W9" and scrambles Dec/Jan ranges.
+          '_sortKey': start.year * 100 + _weekOfYear(start),
         });
         d['sessions'] = (d['sessions'] as int) + 1;
         d['duration'] = (d['duration'] as int) + ((s['duration_minutes'] as int?) ?? 0);
@@ -210,15 +213,16 @@ class _InsightsScreenState extends State<InsightsScreen>
           d['_energyCount'] = (d['_energyCount'] as int) + 1;
         }
       }
-      final result = bucketsMap.values.map((d) {
+      final buckets = bucketsMap.values.toList()
+        ..sort((a, b) => (a['_sortKey'] as int).compareTo(b['_sortKey'] as int));
+      return buckets.map((d) {
         final mc = d.remove('_moodCount') as int;
         final ec = d.remove('_energyCount') as int;
+        d.remove('_sortKey');
         d['mood'] = mc > 0 ? (d['mood'] as double) / mc : 0.0;
         d['energy'] = ec > 0 ? (d['energy'] as double) / ec : 0.0;
         return d;
       }).toList();
-      result.sort((a, b) => (a['day'] as String).compareTo(b['day'] as String));
-      return result;
     }
   }
 
@@ -373,6 +377,10 @@ class _InsightsScreenState extends State<InsightsScreen>
   Widget _buildEmptyState() {
     return SizedBox(
       height: 60.h,
+      // Fill the viewport width so the content actually centers; with
+      // only a height set, the scroll view left-aligns the shrink-wrapped
+      // column on wide screens.
+      width: double.infinity,
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
@@ -574,7 +582,8 @@ class _InsightsScreenState extends State<InsightsScreen>
             : 0.0;
 
       default:
-        return 0.75; // Fallback value
+        // Unknown goal type — show no progress rather than a fake number.
+        return 0.0;
     }
   }
 
@@ -605,15 +614,16 @@ class _InsightsScreenState extends State<InsightsScreen>
   }
 
   int _getRecommendedMinutes() {
+    // Use the user's own weekly minutes goal, scaled to the selected
+    // period (falls back to the 150 min/week public-health guideline).
+    final weekly = (userGoals['total_minutes_per_week'] as int?) ?? 150;
     switch (_selectedTimeFrame) {
-      case 0:
-        return 150; // Weekly recommendation
       case 1:
-        return 600; // Monthly recommendation (150 * 4)
+        return weekly * 4; // month
       case 2:
-        return 1800; // 3-month recommendation (150 * 12)
+        return weekly * 13; // quarter
       default:
-        return 150;
+        return weekly; // week
     }
   }
 

@@ -304,7 +304,9 @@ class SunExposureProgressWidget extends StatelessWidget {
     final duration = dayData['duration'] as int;
     final sessions = dayData['sessions'] as int;
     final day = dayData['day'] as String;
-    final uvExposure = dayData['uvExposure'] as int;
+    // Built as a double by the insights screen — a hard `as int` cast
+    // would throw the moment real data renders.
+    final uvExposure = ((dayData['uvExposure'] as num?) ?? 0).round();
 
     return Container(
       margin: EdgeInsets.only(bottom: 1.h),
