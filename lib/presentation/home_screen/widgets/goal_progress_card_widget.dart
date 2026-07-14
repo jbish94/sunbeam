@@ -53,44 +53,50 @@ class GoalProgressCardWidget extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Row(
-                children: [
-                  Container(
-                    padding: EdgeInsets.all(2.w),
-                    decoration: BoxDecoration(
-                      color: progressColor.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(8),
+              // Must be Expanded: an inner Row with Expanded children
+              // inside an unbounded-width parent Row fails layout
+              // (RenderFlex unbounded-constraints assertion), which
+              // blanked the whole home screen on iOS.
+              Expanded(
+                child: Row(
+                  children: [
+                    Container(
+                      padding: EdgeInsets.all(2.w),
+                      decoration: BoxDecoration(
+                        color: progressColor.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: CustomIconWidget(
+                        iconName: icon,
+                        color: progressColor,
+                        size: 5.w,
+                      ),
                     ),
-                    child: CustomIconWidget(
-                      iconName: icon,
-                      color: progressColor,
-                      size: 5.w,
-                    ),
-                  ),
-                  SizedBox(width: 3.w),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          goalType,
-                          style: AppTheme.lightTheme.textTheme.titleMedium
-                              ?.copyWith(
-                            fontWeight: FontWeight.w600,
+                    SizedBox(width: 3.w),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            goalType,
+                            style: AppTheme.lightTheme.textTheme.titleMedium
+                                ?.copyWith(
+                              fontWeight: FontWeight.w600,
+                            ),
                           ),
-                        ),
-                        Text(
-                          goalDescription,
-                          style:
-                              AppTheme.lightTheme.textTheme.bodySmall?.copyWith(
-                            color: AppTheme
-                                .lightTheme.colorScheme.onSurfaceVariant,
+                          Text(
+                            goalDescription,
+                            style: AppTheme.lightTheme.textTheme.bodySmall
+                                ?.copyWith(
+                              color: AppTheme
+                                  .lightTheme.colorScheme.onSurfaceVariant,
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
               IconButton(
                 onPressed: onEditGoal,
